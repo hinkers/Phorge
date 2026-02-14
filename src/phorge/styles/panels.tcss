@@ -1,0 +1,2 @@
+/* Panel-specific styles are defined inline via DEFAULT_CSS on each widget */
+/* This file is reserved for shared overrides */
