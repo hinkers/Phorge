@@ -50,7 +50,15 @@ class MainScreen(Screen):
         config = load_config()
         if config.ui.vim_keys:
             self.query_one(ServerTree).enable_vim_keys()
+            self._bindings.bind("n", "vim_focus_next", "Next", show=False)
+            self._bindings.bind("N", "vim_focus_previous", "Previous", show=False)
         self._show_server_picker()
+
+    def action_vim_focus_next(self) -> None:
+        self.app.action_focus_next()
+
+    def action_vim_focus_previous(self) -> None:
+        self.app.action_focus_previous()
 
     def _show_server_picker(self) -> None:
         self.app.push_screen(ServerPicker(), callback=self._on_server_selected)
