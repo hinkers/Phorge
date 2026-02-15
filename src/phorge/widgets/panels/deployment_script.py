@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -45,6 +47,7 @@ class DeploymentScriptPanel(Vertical):
         super().__init__(**kwargs)
         self.node_data = node_data
         self._script_content = ""
+        self._data_loaded = asyncio.Event()
 
     def compose(self) -> ComposeResult:
         yield Static("[bold]Deployment Script[/bold]", classes="panel-title")
@@ -67,6 +70,8 @@ class DeploymentScriptPanel(Vertical):
         except Exception as e:
             content = self.query_one("#script-content", Static)
             content.update(f"[red]Error: {escape(str(e))}[/red]")
+        finally:
+            self._data_loaded.set()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-edit":
@@ -74,6 +79,7 @@ class DeploymentScriptPanel(Vertical):
 
     @work
     async def _edit_in_editor(self) -> None:
+        await self._data_loaded.wait()
         config = load_config()
         editor_cmd = config.editor.command
 
@@ -82,6 +88,7 @@ class DeploymentScriptPanel(Vertical):
         ) as f:
             f.write(self._script_content)
             tmp_path = Path(f.name)
+        os.chmod(f.name, 0o600)
 
         try:
             mtime_before = tmp_path.stat().st_mtime
@@ -90,7 +97,6 @@ class DeploymentScriptPanel(Vertical):
                 subprocess.run(
                     [editor_cmd, "--wait", str(tmp_path)] if editor_cmd == "code"
                     else [editor_cmd, str(tmp_path)],
-                    shell=True,
                 )
 
             mtime_after = tmp_path.stat().st_mtime

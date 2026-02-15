@@ -50,6 +50,7 @@ class NodeData:
     server_ip: str | None = None
     ssh_port: int = 22
     site_name: str | None = None
+    site_directory: str | None = None
     loaded: bool = False
 
 
@@ -98,6 +99,71 @@ class ServerTree(Tree[NodeData]):
         for server in servers:
             self._add_server_node(server)
         self.root.expand()
+
+    def populate_server(self, server: Server, sites: list[Site]) -> None:
+        """Clear tree and show a single server with its sites preloaded."""
+        self.clear()
+        ip_display = server.ip_address or "no ip"
+        self.root.set_label(f"[bold]{server.name}[/bold] ({ip_display})")
+        self.root.data = NodeData(
+            NodeType.SERVER_ROOT,
+            server.id,
+            label=server.name,
+            server_ip=server.ip_address,
+            ssh_port=server.ssh_port,
+        )
+
+        self.root.add_leaf(
+            "ℹ Server Info",
+            data=NodeData(
+                NodeType.SERVER_INFO,
+                server.id,
+                label=server.name,
+                server_ip=server.ip_address,
+                ssh_port=server.ssh_port,
+            ),
+        )
+
+        sites_node = self.root.add(
+            "Sites",
+            data=NodeData(
+                NodeType.SITES_GROUP,
+                server.id,
+                label="Sites",
+                server_ip=server.ip_address,
+                ssh_port=server.ssh_port,
+                loaded=True,
+            ),
+        )
+        self.add_sites_to_node(sites_node, sites)
+
+        self.root.add_leaf(
+            "SSH Keys",
+            data=NodeData(NodeType.SSH_KEYS, server.id, label="SSH Keys"),
+        )
+        self.root.add_leaf(
+            "Daemons",
+            data=NodeData(NodeType.DAEMONS, server.id, label="Daemons"),
+        )
+        self.root.add_leaf(
+            "Firewall Rules",
+            data=NodeData(NodeType.FIREWALL_RULES, server.id, label="Firewall Rules"),
+        )
+        self.root.add_leaf(
+            "Scheduled Jobs",
+            data=NodeData(NodeType.SCHEDULED_JOBS, server.id, label="Scheduled Jobs"),
+        )
+        self.root.add_leaf(
+            "Databases",
+            data=NodeData(NodeType.DATABASES_SERVER, server.id, label="Databases"),
+        )
+        self.root.add_leaf(
+            "Database Users",
+            data=NodeData(NodeType.DATABASE_USERS, server.id, label="Database Users"),
+        )
+
+        self.root.expand()
+        sites_node.expand()
 
     def _add_server_node(self, server: Server) -> None:
         ip_display = server.ip_address or "no ip"
@@ -169,6 +235,16 @@ class ServerTree(Tree[NodeData]):
         if sites_node.data is not None:
             sites_node.data.loaded = True
 
+    @staticmethod
+    def _derive_site_directory(site: Site) -> str:
+        """Derive the project root from web_directory, falling back to ~/site_name."""
+        if site.web_directory and site.directory:
+            # Strip the web subdirectory suffix (e.g. /public) to get project root
+            suffix = site.directory.rstrip("/")
+            if site.web_directory.endswith(suffix):
+                return site.web_directory[: -len(suffix)].rstrip("/")
+        return f"/home/forge/{site.name}"
+
     def _add_site_node(
         self, sites_node: TreeNode[NodeData], site: Site
     ) -> None:
@@ -178,12 +254,14 @@ class ServerTree(Tree[NodeData]):
         parent_data = sites_node.data
         server_ip = parent_data.server_ip if parent_data else None
         ssh_port = parent_data.ssh_port if parent_data else 22
+        site_dir = self._derive_site_directory(site)
 
         site_node = sites_node.add(
             site.name,
             data=NodeData(
                 NodeType.SITE_ROOT, server_id, site_id, site.name,
                 server_ip=server_ip, ssh_port=ssh_port, site_name=site.name,
+                site_directory=site_dir,
             ),
         )
 
@@ -207,5 +285,6 @@ class ServerTree(Tree[NodeData]):
                 data=NodeData(
                     node_type, server_id, site_id, label,
                     server_ip=server_ip, ssh_port=ssh_port, site_name=site.name,
+                    site_directory=site_dir,
                 ),
             )

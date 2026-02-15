@@ -469,21 +469,26 @@ class TestMainScreenCompose:
         app.forge_client.get.return_value = {"servers": []}
 
         async with app.run_test() as pilot:
-            app.push_screen(MainScreen())
+            main = MainScreen()
+            app.push_screen(main)
             await pilot.pause()
 
-            screen = app.screen
-            tree = screen.query_one(ServerTree)
+            # Dismiss the server picker that appears on mount
+            app.screen.dismiss(None)
+            await pilot.pause()
+
+            tree = main.query_one(ServerTree)
             assert tree is not None
 
-            detail = screen.query_one(DetailPanel)
+            detail = main.query_one(DetailPanel)
             assert detail is not None
 
     @pytest.mark.asyncio
-    async def test_loads_servers_on_mount(self, tmp_path, monkeypatch):
-        """MainScreen should call the servers API on mount."""
+    async def test_loads_server_on_pick(self, tmp_path, monkeypatch):
+        """Selecting a server in the picker should load it into the tree."""
         from phorge.screens.main import MainScreen
         from phorge.widgets.server_tree import ServerTree
+        from phorge.api.models import Server
 
         config_dir = tmp_path / ".config" / "phorge"
         config_path = config_dir / "config.toml"
@@ -492,19 +497,28 @@ class TestMainScreenCompose:
 
         app = App()
         app.forge_client = _make_mock_client()
-        app.forge_client.get.return_value = {
-            "servers": [
+        # First call returns servers list (for picker), second returns sites
+        app.forge_client.get.side_effect = [
+            {"servers": [
                 {"id": 1, "name": "web-1", "ip_address": "10.0.0.1", "ssh_port": 22, "is_ready": True},
-                {"id": 2, "name": "web-2", "ip_address": "10.0.0.2", "ssh_port": 22, "is_ready": True},
-            ]
-        }
+            ]},
+            {"sites": [
+                {"id": 10, "server_id": 1, "name": "example.com"},
+            ]},
+        ]
+
+        server = Server(id=1, name="web-1", ip_address="10.0.0.1", ssh_port=22, is_ready=True)
 
         async with app.run_test() as pilot:
-            app.push_screen(MainScreen())
+            main = MainScreen()
+            app.push_screen(main)
             await pilot.pause()
 
-            screen = app.screen
-            tree = screen.query_one(ServerTree)
-            # Tree should have been populated with 2 servers
-            assert len(tree.root.children) == 2
+            # Dismiss picker with a selected server
+            app.screen.dismiss(server)
+            await pilot.pause()
+
+            tree = main.query_one(ServerTree)
+            # Root should be labelled with the server name, with site children under Sites
+            assert "web-1" in str(tree.root.label)
             app.forge_client.get.assert_called()

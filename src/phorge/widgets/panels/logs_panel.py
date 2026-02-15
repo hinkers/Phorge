@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -45,6 +47,7 @@ class LogsPanel(Vertical):
         super().__init__(**kwargs)
         self.node_data = node_data
         self._log_content = ""
+        self._data_loaded = asyncio.Event()
 
     def compose(self) -> ComposeResult:
         yield Static("[bold]Logs[/bold]", classes="panel-title")
@@ -74,6 +77,8 @@ class LogsPanel(Vertical):
         except Exception as e:
             content = self.query_one("#log-content", Static)
             content.update(f"[red]Error: {escape(str(e))}[/red]")
+        finally:
+            self._data_loaded.set()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-edit":
@@ -85,6 +90,7 @@ class LogsPanel(Vertical):
 
     @work
     async def _open_in_editor(self) -> None:
+        await self._data_loaded.wait()
         if not self._log_content:
             self.notify("No logs to open", severity="warning")
             return
@@ -98,13 +104,13 @@ class LogsPanel(Vertical):
         ) as f:
             f.write(self._log_content)
             tmp_path = Path(f.name)
+        os.chmod(f.name, 0o600)
 
         try:
             with self.app.suspend():
                 subprocess.run(
                     [editor_cmd, "--wait", str(tmp_path)] if editor_cmd == "code"
                     else [editor_cmd, str(tmp_path)],
-                    shell=True,
                 )
         finally:
             tmp_path.unlink(missing_ok=True)

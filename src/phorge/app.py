@@ -29,6 +29,7 @@ class PhorgeApp(App):
         Binding("ctrl+p", "command_palette", "Commands", show=True),
         Binding("ctrl+s", "ssh_selected", "SSH", show=True),
         Binding("ctrl+r", "refresh", "Refresh", show=True),
+        Binding("ctrl+g", "switch_server", "Servers", show=True),
         Binding("ctrl+e", "edit_config", "Config", show=True),
     ]
 
@@ -60,6 +61,12 @@ class PhorgeApp(App):
         if isinstance(screen, MainScreen):
             screen.action_refresh()
 
+    def action_switch_server(self) -> None:
+        from phorge.screens.main import MainScreen
+        screen = self.screen
+        if isinstance(screen, MainScreen):
+            screen.action_switch_server()
+
     def action_ssh_selected(self) -> None:
         """SSH to the currently selected server in the tree."""
         import subprocess
@@ -90,7 +97,21 @@ class PhorgeApp(App):
                     break
 
         if ip:
+            site_dir = node.data.site_directory
+            if not site_dir:
+                # Walk up to find site_directory from parent nodes
+                current = node
+                while current.parent is not None:
+                    current = current.parent
+                    if current.data and current.data.site_directory:
+                        site_dir = current.data.site_directory
+                        break
+
+            cmd = ["ssh", "-t", "-p", str(port), f"forge@{ip}"]
+            if site_dir:
+                cmd.append(f"cd {site_dir} && exec $SHELL -l")
+
             with self.suspend():
-                subprocess.run(["ssh", "-p", str(port), f"forge@{ip}"])
+                subprocess.call(cmd)
         else:
             self.notify("Could not determine server IP", severity="error")

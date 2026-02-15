@@ -101,7 +101,7 @@ class ServerInfoPanel(Vertical):
         port = self.node_data.ssh_port
         if ip:
             with self.app.suspend():
-                subprocess.run(["ssh", "-p", str(port), f"forge@{ip}"])
+                subprocess.call(["ssh", "-t", "-p", str(port), f"forge@{ip}"])
 
     @work
     async def _confirm_reboot(self) -> None:

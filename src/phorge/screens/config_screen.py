@@ -116,7 +116,7 @@ class ConfigScreen(ModalScreen[bool]):
         save_config(config)
 
         # Update the app's forge client if API key changed
-        if api_key and api_key != self.app.forge_client._api_key:
+        if api_key and api_key != self.app.forge_client.api_key:
             from phorge.api.client import ForgeClient
             self.app.forge_client = ForgeClient(api_key)
 

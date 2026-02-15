@@ -28,6 +28,10 @@ class ForgeClient:
         self._api_key = api_key
         self._client: httpx.AsyncClient | None = None
 
+    @property
+    def api_key(self) -> str:
+        return self._api_key
+
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(

@@ -62,6 +62,7 @@ class Site(_ForgeModel):
     server_id: int | None = None
     name: str
     directory: str | None = None
+    web_directory: str | None = None
     repository: str | None = None
     repository_provider: str | None = None
     repository_branch: str | None = None

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -45,6 +47,7 @@ class EnvironmentPanel(Vertical):
         super().__init__(**kwargs)
         self.node_data = node_data
         self._env_content = ""
+        self._data_loaded = asyncio.Event()
 
     def compose(self) -> ComposeResult:
         yield Static("[bold]Environment File[/bold]", classes="panel-title")
@@ -68,6 +71,8 @@ class EnvironmentPanel(Vertical):
         except Exception as e:
             content = self.query_one("#env-content", Static)
             content.update(f"[red]Error: {escape(str(e))}[/red]")
+        finally:
+            self._data_loaded.set()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-edit":
@@ -77,6 +82,7 @@ class EnvironmentPanel(Vertical):
 
     @work
     async def _edit_in_editor(self) -> None:
+        await self._data_loaded.wait()
         config = load_config()
         editor_cmd = config.editor.command
 
@@ -85,6 +91,7 @@ class EnvironmentPanel(Vertical):
         ) as f:
             f.write(self._env_content)
             tmp_path = Path(f.name)
+        os.chmod(f.name, 0o600)
 
         try:
             mtime_before = tmp_path.stat().st_mtime
@@ -93,7 +100,6 @@ class EnvironmentPanel(Vertical):
                 subprocess.run(
                     [editor_cmd, "--wait", str(tmp_path)] if editor_cmd == "code"
                     else [editor_cmd, str(tmp_path)],
-                    shell=True,
                 )
 
             mtime_after = tmp_path.stat().st_mtime
