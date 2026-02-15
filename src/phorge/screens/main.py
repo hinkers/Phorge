@@ -11,7 +11,7 @@ from textual import work
 from phorge.api.endpoints.sites import SitesAPI
 from phorge.api.exceptions import ForgeAPIError
 from phorge.api.models import Server
-from phorge.config import load_config
+from phorge.config import load_config, load_project_config
 from phorge.screens.server_picker import ServerPicker
 from phorge.widgets.detail_panel import DetailPanel
 from phorge.widgets.server_tree import ServerTree, NodeData, NodeType
@@ -38,6 +38,8 @@ class MainScreen(Screen):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self._current_server: Server | None = None
+        self._default_server_name: str | None = None
+        self._initial_pick = True
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -52,6 +54,8 @@ class MainScreen(Screen):
             self.query_one(ServerTree).enable_vim_keys()
             self._bindings.bind("n", "vim_focus_next", "Next", show=False)
             self._bindings.bind("N", "vim_focus_previous", "Previous", show=False)
+        project = load_project_config()
+        self._default_server_name = project.server
         self._show_server_picker()
 
     def action_vim_focus_next(self) -> None:
@@ -61,7 +65,9 @@ class MainScreen(Screen):
         self.app.action_focus_previous()
 
     def _show_server_picker(self) -> None:
-        self.app.push_screen(ServerPicker(), callback=self._on_server_selected)
+        default = self._default_server_name if self._initial_pick else None
+        self._initial_pick = False
+        self.app.push_screen(ServerPicker(default_server=default), callback=self._on_server_selected)
 
     def _on_server_selected(self, server: Server | None) -> None:
         if server is not None:

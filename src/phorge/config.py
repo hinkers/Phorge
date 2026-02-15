@@ -93,6 +93,35 @@ def save_config(config: PhorgeConfig) -> None:
     os.chmod(CONFIG_PATH, 0o600)
 
 
+@dataclass
+class ProjectConfig:
+    server: str | None = None
+
+
+def load_project_config() -> ProjectConfig:
+    """Load project config from .phorge in the current directory."""
+    path = Path.cwd() / ".phorge"
+    if not path.exists():
+        return ProjectConfig()
+    try:
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+    except Exception:
+        return ProjectConfig()
+    return ProjectConfig(server=data.get("server"))
+
+
+def save_project_config(config: ProjectConfig) -> None:
+    """Write project config to .phorge in the current directory."""
+    path = Path.cwd() / ".phorge"
+    if config.server is None:
+        if path.exists():
+            path.unlink()
+        return
+    with open(path, "wb") as f:
+        tomli_w.dump({"server": config.server}, f)
+
+
 def has_api_key() -> bool:
     """Quick check if an API key is configured."""
     config = load_config()
