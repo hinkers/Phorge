@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -82,6 +83,7 @@ class DeploymentScriptPanel(Vertical):
         ) as f:
             f.write(self._script_content)
             tmp_path = Path(f.name)
+        os.chmod(f.name, 0o600)
 
         try:
             mtime_before = tmp_path.stat().st_mtime
@@ -90,7 +92,6 @@ class DeploymentScriptPanel(Vertical):
                 subprocess.run(
                     [editor_cmd, "--wait", str(tmp_path)] if editor_cmd == "code"
                     else [editor_cmd, str(tmp_path)],
-                    shell=True,
                 )
 
             mtime_after = tmp_path.stat().st_mtime

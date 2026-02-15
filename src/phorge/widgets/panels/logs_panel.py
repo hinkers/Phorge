@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -98,13 +99,13 @@ class LogsPanel(Vertical):
         ) as f:
             f.write(self._log_content)
             tmp_path = Path(f.name)
+        os.chmod(f.name, 0o600)
 
         try:
             with self.app.suspend():
                 subprocess.run(
                     [editor_cmd, "--wait", str(tmp_path)] if editor_cmd == "code"
                     else [editor_cmd, str(tmp_path)],
-                    shell=True,
                 )
         finally:
             tmp_path.unlink(missing_ok=True)

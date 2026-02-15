@@ -5,6 +5,7 @@ Reads and writes TOML config at ~/.config/phorge/config.toml.
 
 from __future__ import annotations
 
+import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -71,6 +72,7 @@ def load_config() -> PhorgeConfig:
 def save_config(config: PhorgeConfig) -> None:
     """Write config to TOML file."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    os.chmod(CONFIG_DIR, 0o700)
 
     data = {
         "forge": {
@@ -88,6 +90,7 @@ def save_config(config: PhorgeConfig) -> None:
 
     with open(CONFIG_PATH, "wb") as f:
         tomli_w.dump(data, f)
+    os.chmod(CONFIG_PATH, 0o600)
 
 
 def has_api_key() -> bool:
