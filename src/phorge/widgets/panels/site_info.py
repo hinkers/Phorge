@@ -80,9 +80,13 @@ class SiteInfoPanel(Vertical):
 
             ip = self.node_data.server_ip
             port = self.node_data.ssh_port
+            site_dir = self.node_data.site_directory
             if ip:
+                cmd = ["ssh", "-t", "-p", str(port), f"forge@{ip}"]
+                if site_dir:
+                    cmd.append(f"cd {site_dir} && exec $SHELL -l")
                 with self.app.suspend():
-                    subprocess.run(["ssh", "-p", str(port), f"forge@{ip}"])
+                    subprocess.call(cmd)
         elif event.button.id == "btn-browser":
             import webbrowser
 

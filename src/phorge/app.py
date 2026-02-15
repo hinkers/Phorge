@@ -97,7 +97,21 @@ class PhorgeApp(App):
                     break
 
         if ip:
+            site_dir = node.data.site_directory
+            if not site_dir:
+                # Walk up to find site_directory from parent nodes
+                current = node
+                while current.parent is not None:
+                    current = current.parent
+                    if current.data and current.data.site_directory:
+                        site_dir = current.data.site_directory
+                        break
+
+            cmd = ["ssh", "-t", "-p", str(port), f"forge@{ip}"]
+            if site_dir:
+                cmd.append(f"cd {site_dir} && exec $SHELL -l")
+
             with self.suspend():
-                subprocess.run(["ssh", "-p", str(port), f"forge@{ip}"])
+                subprocess.call(cmd)
         else:
             self.notify("Could not determine server IP", severity="error")
