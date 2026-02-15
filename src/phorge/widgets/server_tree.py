@@ -99,6 +99,71 @@ class ServerTree(Tree[NodeData]):
             self._add_server_node(server)
         self.root.expand()
 
+    def populate_server(self, server: Server, sites: list[Site]) -> None:
+        """Clear tree and show a single server with its sites preloaded."""
+        self.clear()
+        ip_display = server.ip_address or "no ip"
+        self.root.set_label(f"[bold]{server.name}[/bold] ({ip_display})")
+        self.root.data = NodeData(
+            NodeType.SERVER_ROOT,
+            server.id,
+            label=server.name,
+            server_ip=server.ip_address,
+            ssh_port=server.ssh_port,
+        )
+
+        self.root.add_leaf(
+            "ℹ Server Info",
+            data=NodeData(
+                NodeType.SERVER_INFO,
+                server.id,
+                label=server.name,
+                server_ip=server.ip_address,
+                ssh_port=server.ssh_port,
+            ),
+        )
+
+        sites_node = self.root.add(
+            "Sites",
+            data=NodeData(
+                NodeType.SITES_GROUP,
+                server.id,
+                label="Sites",
+                server_ip=server.ip_address,
+                ssh_port=server.ssh_port,
+                loaded=True,
+            ),
+        )
+        self.add_sites_to_node(sites_node, sites)
+
+        self.root.add_leaf(
+            "SSH Keys",
+            data=NodeData(NodeType.SSH_KEYS, server.id, label="SSH Keys"),
+        )
+        self.root.add_leaf(
+            "Daemons",
+            data=NodeData(NodeType.DAEMONS, server.id, label="Daemons"),
+        )
+        self.root.add_leaf(
+            "Firewall Rules",
+            data=NodeData(NodeType.FIREWALL_RULES, server.id, label="Firewall Rules"),
+        )
+        self.root.add_leaf(
+            "Scheduled Jobs",
+            data=NodeData(NodeType.SCHEDULED_JOBS, server.id, label="Scheduled Jobs"),
+        )
+        self.root.add_leaf(
+            "Databases",
+            data=NodeData(NodeType.DATABASES_SERVER, server.id, label="Databases"),
+        )
+        self.root.add_leaf(
+            "Database Users",
+            data=NodeData(NodeType.DATABASE_USERS, server.id, label="Database Users"),
+        )
+
+        self.root.expand()
+        sites_node.expand()
+
     def _add_server_node(self, server: Server) -> None:
         ip_display = server.ip_address or "no ip"
         server_node = self.root.add(

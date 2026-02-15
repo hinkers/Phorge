@@ -29,6 +29,7 @@ class PhorgeApp(App):
         Binding("ctrl+p", "command_palette", "Commands", show=True),
         Binding("ctrl+s", "ssh_selected", "SSH", show=True),
         Binding("ctrl+r", "refresh", "Refresh", show=True),
+        Binding("ctrl+g", "switch_server", "Servers", show=True),
         Binding("ctrl+e", "edit_config", "Config", show=True),
     ]
 
@@ -59,6 +60,12 @@ class PhorgeApp(App):
         screen = self.screen
         if isinstance(screen, MainScreen):
             screen.action_refresh()
+
+    def action_switch_server(self) -> None:
+        from phorge.screens.main import MainScreen
+        screen = self.screen
+        if isinstance(screen, MainScreen):
+            screen.action_switch_server()
 
     def action_ssh_selected(self) -> None:
         """SSH to the currently selected server in the tree."""

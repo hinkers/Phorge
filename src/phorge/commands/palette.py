@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import subprocess
-import webbrowser
 
 from textual.command import Provider, Hit, Hits, DiscoveryHit
 
@@ -28,21 +27,20 @@ class ServerCommandProvider(Provider):
 
     async def discover(self) -> Hits:
         """Show available commands when palette first opens."""
-        # Config command
+        yield DiscoveryHit(
+            "Switch Server",
+            self._switch_server,
+            help="Open server picker to select a different server",
+        )
+
         yield DiscoveryHit(
             "Edit Configuration",
             self._open_config,
             help="Edit API key, editor, and UI settings",
         )
 
-        # Server commands
         for server in self._servers:
             ip = server.ip_address or "no ip"
-            yield DiscoveryHit(
-                f"Server: {server.name} ({ip})",
-                self._navigate_to_server(server),
-                help=f"Region: {server.region or 'N/A'} | Provider: {server.provider or 'N/A'}",
-            )
             yield DiscoveryHit(
                 f"SSH to {server.name}",
                 self._ssh_to_server(server),
@@ -53,6 +51,12 @@ class ServerCommandProvider(Provider):
         """Fuzzy search across servers and actions."""
         matcher = self.matcher(query)
 
+        # Switch Server
+        switch_label = "Switch Server"
+        score = matcher.match(switch_label)
+        if score > 0:
+            yield Hit(score, matcher.highlight(switch_label), self._switch_server)
+
         # Config
         config_label = "Edit Configuration"
         score = matcher.match(config_label)
@@ -60,24 +64,13 @@ class ServerCommandProvider(Provider):
             yield Hit(score, matcher.highlight(config_label), self._open_config)
 
         # Refresh
-        refresh_label = "Refresh Servers"
+        refresh_label = "Refresh Server"
         score = matcher.match(refresh_label)
         if score > 0:
             yield Hit(score, matcher.highlight(refresh_label), self._refresh)
 
         for server in self._servers:
             ip = server.ip_address or ""
-
-            # Navigate to server
-            label = f"Server: {server.name} ({ip})"
-            score = matcher.match(label)
-            if score > 0:
-                yield Hit(
-                    score,
-                    matcher.highlight(label),
-                    self._navigate_to_server(server),
-                    help=f"Region: {server.region or 'N/A'}",
-                )
 
             # SSH to server
             ssh_label = f"SSH to {server.name}"
@@ -100,28 +93,11 @@ class ServerCommandProvider(Provider):
         if isinstance(screen, MainScreen):
             screen.action_refresh()
 
-    def _navigate_to_server(self, server: Server):
-        def callback() -> None:
-            from phorge.screens.main import MainScreen
-            from phorge.widgets.server_tree import ServerTree, NodeType
-
-            screen = self.app.screen
-            if not isinstance(screen, MainScreen):
-                return
-
-            tree = screen.query_one(ServerTree)
-            # Find and select the server node
-            for node in tree.root.children:
-                if node.data and node.data.server_id == server.id:
-                    node.expand()
-                    tree.select_node(node)
-                    # Show server info
-                    for child in node.children:
-                        if child.data and child.data.node_type == NodeType.SERVER_INFO:
-                            tree.select_node(child)
-                            break
-                    break
-        return callback
+    def _switch_server(self) -> None:
+        from phorge.screens.main import MainScreen
+        screen = self.app.screen
+        if isinstance(screen, MainScreen):
+            screen.action_switch_server()
 
     def _ssh_to_server(self, server: Server):
         def callback() -> None:

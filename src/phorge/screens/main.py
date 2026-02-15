@@ -8,10 +8,11 @@ from textual.screen import Screen
 from textual.widgets import Header, Footer
 from textual import work
 
-from phorge.api.endpoints.servers import ServersAPI
 from phorge.api.endpoints.sites import SitesAPI
 from phorge.api.exceptions import ForgeAPIError
+from phorge.api.models import Server
 from phorge.config import load_config
+from phorge.screens.server_picker import ServerPicker
 from phorge.widgets.detail_panel import DetailPanel
 from phorge.widgets.server_tree import ServerTree, NodeData, NodeType
 
@@ -31,7 +32,12 @@ class MainScreen(Screen):
 
     BINDINGS = [
         ("ctrl+r", "refresh", "Refresh"),
+        ("ctrl+g", "switch_server", "Servers"),
     ]
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._current_server: Server | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -44,18 +50,26 @@ class MainScreen(Screen):
         config = load_config()
         if config.ui.vim_keys:
             self.query_one(ServerTree).enable_vim_keys()
-        self.load_servers()
+        self._show_server_picker()
 
-    @work(exclusive=True, group="servers")
-    async def load_servers(self) -> None:
+    def _show_server_picker(self) -> None:
+        self.app.push_screen(ServerPicker(), callback=self._on_server_selected)
+
+    def _on_server_selected(self, server: Server | None) -> None:
+        if server is not None:
+            self._current_server = server
+            self._load_server_with_sites(server)
+
+    @work(exclusive=True, group="server-load")
+    async def _load_server_with_sites(self, server: Server) -> None:
         tree = self.query_one(ServerTree)
         tree.loading = True
         try:
-            api = ServersAPI(self.app.forge_client)
-            servers = await api.list()
-            tree.populate_servers(servers)
+            api = SitesAPI(self.app.forge_client)
+            sites = await api.list(server.id)
+            tree.populate_server(server, sites)
         except ForgeAPIError as e:
-            self.notify(f"Error loading servers: {e}", severity="error", markup=False)
+            self.notify(f"Error loading server: {e}", severity="error", markup=False)
         except Exception as e:
             self.notify(f"Unexpected error: {e}", severity="error", markup=False)
         finally:
@@ -92,4 +106,8 @@ class MainScreen(Screen):
             self.notify(f"Error loading sites: {e}", severity="error", markup=False)
 
     def action_refresh(self) -> None:
-        self.load_servers()
+        if self._current_server is not None:
+            self._load_server_with_sites(self._current_server)
+
+    def action_switch_server(self) -> None:
+        self._show_server_picker()
