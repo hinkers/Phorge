@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
 import tempfile
@@ -46,6 +47,7 @@ class LogsPanel(Vertical):
         super().__init__(**kwargs)
         self.node_data = node_data
         self._log_content = ""
+        self._data_loaded = asyncio.Event()
 
     def compose(self) -> ComposeResult:
         yield Static("[bold]Logs[/bold]", classes="panel-title")
@@ -75,6 +77,8 @@ class LogsPanel(Vertical):
         except Exception as e:
             content = self.query_one("#log-content", Static)
             content.update(f"[red]Error: {escape(str(e))}[/red]")
+        finally:
+            self._data_loaded.set()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-edit":
@@ -86,6 +90,7 @@ class LogsPanel(Vertical):
 
     @work
     async def _open_in_editor(self) -> None:
+        await self._data_loaded.wait()
         if not self._log_content:
             self.notify("No logs to open", severity="warning")
             return
