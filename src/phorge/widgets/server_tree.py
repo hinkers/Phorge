@@ -235,15 +235,16 @@ class ServerTree(Tree[NodeData]):
         if sites_node.data is not None:
             sites_node.data.loaded = True
 
-    @staticmethod
-    def _derive_site_directory(site: Site) -> str:
+    def _derive_site_directory(self, site: Site) -> str:
         """Derive the project root from web_directory, falling back to ~/site_name."""
         if site.web_directory and site.directory:
             # Strip the web subdirectory suffix (e.g. /public) to get project root
             suffix = site.directory.rstrip("/")
             if site.web_directory.endswith(suffix):
                 return site.web_directory[: -len(suffix)].rstrip("/")
-        return f"/home/forge/{site.name}"
+        get_user = getattr(self.app, "get_ssh_user", None)
+        ssh_user = get_user(site.server_id) if get_user else "forge"
+        return f"/home/{ssh_user}/{site.name}"
 
     def _add_site_node(
         self, sites_node: TreeNode[NodeData], site: Site

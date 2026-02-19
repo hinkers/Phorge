@@ -105,6 +105,7 @@ class ServerCommandProvider(Provider):
             if not ip:
                 self.app.notify("No IP address for this server", severity="error")
                 return
+            user = self.app.get_ssh_user(server.id)
             with self.app.suspend():
-                subprocess.call(["ssh", "-t", "-p", str(server.ssh_port), f"forge@{ip}"])
+                subprocess.call(["ssh", "-t", "-p", str(server.ssh_port), f"{user}@{ip}"])
         return callback

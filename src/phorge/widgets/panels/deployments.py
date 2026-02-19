@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
+
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Vertical, VerticalScroll
 from textual.widgets import DataTable, Static, Button
 from textual import work
 
@@ -11,6 +13,13 @@ from rich.markup import escape
 
 from phorge.api.endpoints.deployments import DeploymentsAPI
 from phorge.widgets.server_tree import NodeData
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences from text."""
+    return _ANSI_RE.sub("", text)
 
 
 class DeploymentsPanel(Vertical):
@@ -29,15 +38,16 @@ class DeploymentsPanel(Vertical):
         margin: 0 1 0 0;
     }
     DeploymentsPanel DataTable {
+        height: 2fr;
+    }
+    DeploymentsPanel #output-scroll {
         height: 1fr;
+        min-height: 6;
+        border: solid $primary;
+        margin-top: 1;
     }
     DeploymentsPanel #deployment-output {
-        height: auto;
-        max-height: 20;
-        border: solid $primary;
         padding: 1;
-        margin-top: 1;
-        overflow-y: auto;
     }
     """
 
@@ -50,8 +60,10 @@ class DeploymentsPanel(Vertical):
         with Vertical(classes="action-bar"):
             yield Button("Deploy Now", id="btn-deploy", variant="primary")
             yield Button("Reset Status", id="btn-reset", variant="warning")
+            yield Button("Refresh", id="btn-refresh", variant="default")
         yield DataTable(id="deployments-table", cursor_type="row")
-        yield Static("", id="deployment-output")
+        with VerticalScroll(id="output-scroll"):
+            yield Static("", id="deployment-output")
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
@@ -92,10 +104,10 @@ class DeploymentsPanel(Vertical):
             output = await api.get_output(
                 self.node_data.server_id, self.node_data.site_id, deployment_id
             )
-            safe_output = escape(output) if output else "[dim]No output[/dim]"
-            output_widget.update(f"[bold]Deployment #{deployment_id} Output:[/bold]\n\n{safe_output}")
+            clean = escape(_strip_ansi(output)) if output else "[dim]No output[/dim]"
+            output_widget.update(f"[bold]Deployment #{deployment_id} Output:[/bold]\n\n{clean}")
         except Exception as e:
-            output_widget.update(f"[red]Error: {escape(str(e))}[/red]")
+            output_widget.update(f"[red]Error: {escape(_strip_ansi(str(e)))}[/red]")
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         deployment_id = int(str(event.row_key.value))
@@ -106,6 +118,8 @@ class DeploymentsPanel(Vertical):
             self._confirm_deploy()
         elif event.button.id == "btn-reset":
             self._reset_status()
+        elif event.button.id == "btn-refresh":
+            self.load_data()
 
     @work
     async def _confirm_deploy(self) -> None:

@@ -39,9 +39,12 @@ class SSHKeysPanel(Vertical):
 
     def compose(self) -> ComposeResult:
         yield Static("[bold]SSH Keys[/bold]", classes="panel-title")
+        user = self.app.get_ssh_user(self.node_data.server_id)
+        yield Static(f"SSH User: [bold]{user}[/bold]", id="ssh-user-display")
         with Vertical(classes="action-bar"):
             yield Button("Add Key", id="btn-add", variant="primary")
             yield Button("Add from ~/.ssh", id="btn-add-local", variant="default")
+            yield Button("Set SSH User", id="btn-set-user", variant="default")
             yield Button("Refresh", id="btn-refresh", variant="default")
         yield DataTable(id="ssh-keys-table", cursor_type="row")
 
@@ -79,6 +82,8 @@ class SSHKeysPanel(Vertical):
             self._add_key()
         elif event.button.id == "btn-add-local":
             self._add_local_key()
+        elif event.button.id == "btn-set-user":
+            self._set_ssh_user()
 
     @work
     async def _add_key(self) -> None:
@@ -115,6 +120,28 @@ class SSHKeysPanel(Vertical):
             await api.create(self.node_data.server_id, name, key_content)
             self.notify(f"SSH key '{name}' added from {pub_key_path.name}")
             self.load_data()
+
+    @work
+    async def _set_ssh_user(self) -> None:
+        from phorge.screens.input_modal import InputModal
+        from phorge.config import load_config, save_config
+
+        current = self.app.get_ssh_user(self.node_data.server_id)
+        result = await self.app.push_screen_wait(
+            InputModal("SSH User for this server", placeholder=current)
+        )
+        if result:
+            server_id = str(self.node_data.server_id)
+            self.app.server_users[server_id] = result
+
+            config = load_config()
+            config.server_users[server_id] = result
+            save_config(config)
+
+            self.query_one("#ssh-user-display", Static).update(
+                f"SSH User: [bold]{result}[/bold]"
+            )
+            self.notify(f"SSH user set to '{result}' for this server")
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         key_id = int(str(event.row_key.value))

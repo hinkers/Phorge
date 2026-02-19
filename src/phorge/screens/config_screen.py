@@ -20,7 +20,7 @@ class ConfigScreen(ModalScreen[bool]):
     #config-dialog {
         width: 70;
         height: auto;
-        max-height: 25;
+        max-height: 30;
         border: thick $background 80%;
         background: $surface;
         padding: 1 2;
@@ -73,6 +73,13 @@ class ConfigScreen(ModalScreen[bool]):
                 classes="config-field",
             )
 
+            yield Static("SSH User:")
+            yield Input(
+                value=config.forge.ssh_user,
+                id="cfg-ssh-user",
+                classes="config-field",
+            )
+
             yield Static("Default Editor:")
             yield Select(
                 [
@@ -109,7 +116,10 @@ class ConfigScreen(ModalScreen[bool]):
 
         vim_keys = self.query_one("#cfg-vim-keys", Switch).value
 
+        ssh_user = self.query_one("#cfg-ssh-user", Input).value.strip() or "forge"
+
         config.forge.api_key = api_key
+        config.forge.ssh_user = ssh_user
         config.editor.command = editor
         config.ui.vim_keys = vim_keys
 
@@ -119,6 +129,8 @@ class ConfigScreen(ModalScreen[bool]):
         if api_key and api_key != self.app.forge_client.api_key:
             from phorge.api.client import ForgeClient
             self.app.forge_client = ForgeClient(api_key)
+
+        self.app.ssh_user = ssh_user
 
         self.notify("Configuration saved")
         self.dismiss(True)

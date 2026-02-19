@@ -81,8 +81,9 @@ class SiteInfoPanel(Vertical):
             ip = self.node_data.server_ip
             port = self.node_data.ssh_port
             site_dir = self.node_data.site_directory
+            user = self.app.get_ssh_user(self.node_data.server_id)
             if ip:
-                cmd = ["ssh", "-t", "-p", str(port), f"forge@{ip}"]
+                cmd = ["ssh", "-t", "-p", str(port), f"{user}@{ip}"]
                 if site_dir:
                     cmd.append(f"cd {site_dir} && exec $SHELL -l")
                 with self.app.suspend():

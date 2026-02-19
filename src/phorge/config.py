@@ -19,6 +19,7 @@ CONFIG_PATH = CONFIG_DIR / "config.toml"
 @dataclass
 class ForgeConfig:
     api_key: str = ""
+    ssh_user: str = "forge"
 
 
 @dataclass
@@ -38,6 +39,7 @@ class PhorgeConfig:
     forge: ForgeConfig = field(default_factory=ForgeConfig)
     editor: EditorConfig = field(default_factory=EditorConfig)
     ui: UIConfig = field(default_factory=UIConfig)
+    server_users: dict[str, str] = field(default_factory=dict)
 
 
 def load_config() -> PhorgeConfig:
@@ -53,10 +55,12 @@ def load_config() -> PhorgeConfig:
     forge_data = data.get("forge", {})
     editor_data = data.get("editor", {})
     ui_data = data.get("ui", {})
+    server_users = {str(k): str(v) for k, v in data.get("server_users", {}).items()}
 
     return PhorgeConfig(
         forge=ForgeConfig(
             api_key=forge_data.get("api_key", ""),
+            ssh_user=forge_data.get("ssh_user", "forge"),
         ),
         editor=EditorConfig(
             command=editor_data.get("command", "code"),
@@ -66,6 +70,7 @@ def load_config() -> PhorgeConfig:
             theme=ui_data.get("theme", "dark"),
             vim_keys=ui_data.get("vim_keys", False),
         ),
+        server_users=server_users,
     )
 
 
@@ -77,6 +82,7 @@ def save_config(config: PhorgeConfig) -> None:
     data = {
         "forge": {
             "api_key": config.forge.api_key,
+            "ssh_user": config.forge.ssh_user,
         },
         "editor": {
             "command": config.editor.command,
@@ -87,6 +93,8 @@ def save_config(config: PhorgeConfig) -> None:
             "vim_keys": config.ui.vim_keys,
         },
     }
+    if config.server_users:
+        data["server_users"] = config.server_users
 
     with open(CONFIG_PATH, "wb") as f:
         tomli_w.dump(data, f)

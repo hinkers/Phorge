@@ -53,6 +53,7 @@ class ServerInfoPanel(Vertical):
         yield Static("[dim]Loading...[/dim]", id="server-info-content")
         with Vertical(classes="action-bar"):
             yield Button("SSH", id="btn-ssh", variant="primary")
+            yield Button("Files", id="btn-sftp", variant="default")
             yield Button("Reboot", id="btn-reboot", variant="error")
 
     def on_mount(self) -> None:
@@ -91,6 +92,8 @@ class ServerInfoPanel(Vertical):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-ssh":
             self._ssh_to_server()
+        elif event.button.id == "btn-sftp":
+            self._sftp_to_server()
         elif event.button.id == "btn-reboot":
             self._confirm_reboot()
 
@@ -99,9 +102,21 @@ class ServerInfoPanel(Vertical):
 
         ip = self.node_data.server_ip
         port = self.node_data.ssh_port
+        user = self.app.get_ssh_user(self.node_data.server_id)
         if ip:
             with self.app.suspend():
-                subprocess.call(["ssh", "-t", "-p", str(port), f"forge@{ip}"])
+                subprocess.call(["ssh", "-t", "-p", str(port), f"{user}@{ip}"])
+
+    def _sftp_to_server(self) -> None:
+        import subprocess
+
+        ip = self.node_data.server_ip
+        port = self.node_data.ssh_port
+        user = self.app.get_ssh_user(self.node_data.server_id)
+        if ip:
+            address = f"sftp://{user}@{ip}:{port}:/home/{user}"
+            with self.app.suspend():
+                subprocess.call(["termscp", address])
 
     @work
     async def _confirm_reboot(self) -> None:
