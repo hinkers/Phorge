@@ -54,6 +54,7 @@ class ServerInfoPanel(Vertical):
         with Vertical(classes="action-bar"):
             yield Button("SSH", id="btn-ssh", variant="primary")
             yield Button("Files", id="btn-sftp", variant="default")
+            yield Button("Database", id="btn-db", variant="default")
             yield Button("Reboot", id="btn-reboot", variant="error")
 
     def on_mount(self) -> None:
@@ -94,6 +95,8 @@ class ServerInfoPanel(Vertical):
             self._ssh_to_server()
         elif event.button.id == "btn-sftp":
             self._sftp_to_server()
+        elif event.button.id == "btn-db":
+            self.app.action_db_selected()
         elif event.button.id == "btn-reboot":
             self._confirm_reboot()
 

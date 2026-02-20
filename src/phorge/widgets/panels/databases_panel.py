@@ -38,6 +38,7 @@ class DatabasesPanel(Vertical):
     def compose(self) -> ComposeResult:
         yield Static("[bold]Databases[/bold]", classes="panel-title")
         with Vertical(classes="action-bar"):
+            yield Button("Connect", id="btn-connect", variant="success")
             yield Button("Create Database", id="btn-create", variant="primary")
             yield Button("Sync", id="btn-sync", variant="default")
             yield Button("Refresh", id="btn-refresh", variant="default")
@@ -78,6 +79,8 @@ class DatabasesPanel(Vertical):
             self._sync_databases()
         elif event.button.id == "btn-create":
             self._create_database()
+        elif event.button.id == "btn-connect":
+            self.app.action_db_selected()
 
     @work
     async def _sync_databases(self) -> None:

@@ -43,6 +43,12 @@ class PanelTestApp(App):
         super().__init__(**kwargs)
         self._panel = panel_widget
         self.forge_client = _make_mock_client()
+        self.ssh_user = "forge"
+        self.server_users: dict[str, str] = {}
+
+    def get_ssh_user(self, server_id: int) -> str:
+        """Get the SSH user for a server, falling back to the global default."""
+        return self.server_users.get(str(server_id), self.ssh_user)
 
     def compose(self) -> ComposeResult:
         yield self._panel
@@ -116,6 +122,43 @@ class TestServerInfoPanel:
             rendered = content.content
             assert "1.2.3.4" in rendered
             assert "prod" in rendered
+
+    @pytest.mark.asyncio
+    async def test_has_database_button(self, server_nd):
+        from phorge.widgets.panels.server_info import ServerInfoPanel
+
+        panel = ServerInfoPanel(node_data=server_nd)
+        app = PanelTestApp(panel)
+        app.forge_client.get.return_value = {
+            "server": {
+                "id": 1, "name": "prod", "ip_address": "1.2.3.4", "ssh_port": 22,
+                "is_ready": True, "status": "installed",
+            }
+        }
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            db_btn = app.query_one("#btn-db", Button)
+            assert db_btn is not None
+            assert db_btn.label.plain == "Database"
+
+    @pytest.mark.asyncio
+    async def test_has_sftp_button(self, server_nd):
+        from phorge.widgets.panels.server_info import ServerInfoPanel
+
+        panel = ServerInfoPanel(node_data=server_nd)
+        app = PanelTestApp(panel)
+        app.forge_client.get.return_value = {
+            "server": {
+                "id": 1, "name": "prod", "ip_address": "1.2.3.4", "ssh_port": 22,
+                "is_ready": True, "status": "installed",
+            }
+        }
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            sftp_btn = app.query_one("#btn-sftp", Button)
+            assert sftp_btn is not None
 
     @pytest.mark.asyncio
     async def test_handles_api_error(self, server_nd):
@@ -334,6 +377,21 @@ class TestDatabasesPanel:
             await pilot.pause()
             create_btn = app.query_one("#btn-create", Button)
             assert create_btn is not None
+
+    @pytest.mark.asyncio
+    async def test_has_connect_button(self):
+        from phorge.widgets.panels.databases_panel import DatabasesPanel
+
+        nd = NodeData(NodeType.DATABASES_SERVER, server_id=1, label="Databases")
+        panel = DatabasesPanel(node_data=nd)
+        app = PanelTestApp(panel)
+        app.forge_client.get.return_value = {"databases": []}
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            connect_btn = app.query_one("#btn-connect", Button)
+            assert connect_btn is not None
+            assert connect_btn.label.plain == "Connect"
 
 
 # ---------------------------------------------------------------------------
