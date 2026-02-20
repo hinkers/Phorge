@@ -216,6 +216,8 @@ class PhorgeApp(App):
             )
             return
 
+        self.notify("Connecting to database...", severity="information")
+
         # Fetch and parse .env
         try:
             api = EnvironmentAPI(self.forge_client)
