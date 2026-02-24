@@ -38,11 +38,17 @@ type App struct {
 	width, height int
 
 	// Sub-model panels.
-	serverList       panels.ServerList
-	siteList         panels.SiteList
-	serverInfo       panels.ServerInfo
-	siteInfo         panels.SiteInfo
-	deploymentsPanel panels.DeploymentsPanel
+	serverList        panels.ServerList
+	siteList          panels.SiteList
+	serverInfo        panels.ServerInfo
+	siteInfo          panels.SiteInfo
+	deploymentsPanel  panels.DeploymentsPanel
+	deployScriptPanel panels.DeployScriptPanel
+	environmentPanel  panels.EnvironmentPanel
+
+	// showDeployScript is true when viewing the deploy script sub-view
+	// from within the deployments tab.
+	showDeployScript bool
 
 	// Confirmation dialog state.
 	confirm *components.Confirm
@@ -143,12 +149,21 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		site := msg.Site
 		m.selectedSite = &site
 		m.siteInfo = m.siteInfo.SetSite(&site)
-		// Re-initialise the deployments panel if the detail panel is showing deployments.
-		if m.activeTab == 1 && m.focus == FocusDetailPanel && m.selectedSrv != nil {
-			m.deploymentsPanel = panels.NewDeploymentsPanel(
-				m.forge, m.selectedSrv.ID, site.ID,
-			)
-			return m, m.deploymentsPanel.LoadDeployments()
+		// Re-initialise the active detail panel.
+		if m.focus == FocusDetailPanel && m.selectedSrv != nil {
+			switch m.activeTab {
+			case 1:
+				m.showDeployScript = false
+				m.deploymentsPanel = panels.NewDeploymentsPanel(
+					m.forge, m.selectedSrv.ID, site.ID,
+				)
+				return m, m.deploymentsPanel.LoadDeployments()
+			case 2:
+				m.environmentPanel = panels.NewEnvironmentPanel(
+					m.forge, m.selectedSrv.ID, site.ID, m.config.Editor.Command,
+				)
+				return m, m.environmentPanel.LoadEnv()
+			}
 		}
 		return m, nil
 
@@ -186,6 +201,38 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.deploymentsPanel.LoadDeployments())
 		}
 		return m, tea.Batch(cmds...)
+
+	// Deploy script panel messages.
+	case panels.ScriptLoadedMsg:
+		p, cmd := m.deployScriptPanel.Update(msg)
+		m.deployScriptPanel = p.(panels.DeployScriptPanel)
+		return m, cmd
+
+	case panels.ScriptSavedMsg:
+		if msg.Err != nil {
+			m.toast = fmt.Sprintf("Script save failed: %v", msg.Err)
+			m.toastIsErr = true
+		} else {
+			m.toast = "Deploy script updated"
+			m.toastIsErr = false
+		}
+		return m, m.clearToastAfter(3 * time.Second)
+
+	// Environment panel messages.
+	case panels.EnvLoadedMsg:
+		p, cmd := m.environmentPanel.Update(msg)
+		m.environmentPanel = p.(panels.EnvironmentPanel)
+		return m, cmd
+
+	case panels.EnvSavedMsg:
+		if msg.Err != nil {
+			m.toast = fmt.Sprintf("Environment save failed: %v", msg.Err)
+			m.toastIsErr = true
+		} else {
+			m.toast = "Environment updated"
+			m.toastIsErr = false
+		}
+		return m, m.clearToastAfter(3 * time.Second)
 
 	// Panel-level errors (from panel API commands).
 	case panels.PanelErrMsg:
@@ -303,11 +350,20 @@ func (m App) handleContextListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.navKeys.Enter):
 		m.focus = FocusDetailPanel
 		// Initialise the active tab panel when entering the detail panel.
-		if m.selectedSite != nil && m.selectedSrv != nil && m.activeTab == 1 {
-			m.deploymentsPanel = panels.NewDeploymentsPanel(
-				m.forge, m.selectedSrv.ID, m.selectedSite.ID,
-			)
-			return m, m.deploymentsPanel.LoadDeployments()
+		if m.selectedSite != nil && m.selectedSrv != nil {
+			switch m.activeTab {
+			case 1:
+				m.showDeployScript = false
+				m.deploymentsPanel = panels.NewDeploymentsPanel(
+					m.forge, m.selectedSrv.ID, m.selectedSite.ID,
+				)
+				return m, m.deploymentsPanel.LoadDeployments()
+			case 2:
+				m.environmentPanel = panels.NewEnvironmentPanel(
+					m.forge, m.selectedSrv.ID, m.selectedSite.ID, m.config.Editor.Command,
+				)
+				return m, m.environmentPanel.LoadEnv()
+			}
 		}
 		return m, nil
 	case key.Matches(msg, m.navKeys.Back):
@@ -324,6 +380,17 @@ func (m App) handleContextListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // handleDetailKey processes keys when the detail panel is focused.
 func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// If the deploy script sub-view is active, route keys to it.
+	if m.activeTab == 1 && m.selectedSite != nil && m.showDeployScript {
+		if key.Matches(msg, m.navKeys.Back) {
+			m.showDeployScript = false
+			return m, nil
+		}
+		p, cmd := m.deployScriptPanel.Update(msg)
+		m.deployScriptPanel = p.(panels.DeployScriptPanel)
+		return m, cmd
+	}
+
 	// If the deployments panel is showing output and user presses Esc,
 	// go back to the deployments list (not up to context panel).
 	if m.activeTab == 1 && m.selectedSite != nil && m.deploymentsPanel.ShowingOutput() {
@@ -365,19 +432,34 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleDeploymentsKey(msg)
 	}
 
+	// If the environment panel is active, delegate keys.
+	if m.activeTab == 2 && m.selectedSite != nil {
+		return m.handleEnvironmentKey(msg)
+	}
+
 	return m, nil
 }
 
 // switchToTab changes the active detail tab and initialises the panel if needed.
 func (m App) switchToTab(tab int) (tea.Model, tea.Cmd) {
 	m.activeTab = tab
+	m.showDeployScript = false // always reset sub-view when switching tabs
 
-	// Initialise the deployments panel when switching to tab 1.
-	if tab == 1 && m.selectedSite != nil && m.selectedSrv != nil {
+	if m.selectedSite == nil || m.selectedSrv == nil {
+		return m, nil
+	}
+
+	switch tab {
+	case 1:
 		m.deploymentsPanel = panels.NewDeploymentsPanel(
 			m.forge, m.selectedSrv.ID, m.selectedSite.ID,
 		)
 		return m, m.deploymentsPanel.LoadDeployments()
+	case 2:
+		m.environmentPanel = panels.NewEnvironmentPanel(
+			m.forge, m.selectedSrv.ID, m.selectedSite.ID, m.config.Editor.Command,
+		)
+		return m, m.environmentPanel.LoadEnv()
 	}
 
 	return m, nil
@@ -396,11 +478,30 @@ func (m App) handleDeploymentsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		c := components.NewConfirm("reset-deploy", "Reset deployment status?")
 		m.confirm = &c
 		return m, nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("S"))):
+		// Open the deploy script sub-view.
+		if m.selectedSrv != nil && m.selectedSite != nil {
+			m.showDeployScript = true
+			m.deployScriptPanel = panels.NewDeployScriptPanel(
+				m.forge, m.selectedSrv.ID, m.selectedSite.ID, m.config.Editor.Command,
+			)
+			return m, m.deployScriptPanel.LoadScript()
+		}
+		return m, nil
 	}
 
 	// Delegate navigation and other keys to the deployments panel.
 	p, cmd := m.deploymentsPanel.Update(msg)
 	m.deploymentsPanel = p.(panels.DeploymentsPanel)
+	return m, cmd
+}
+
+// handleEnvironmentKey handles keys specific to the environment panel tab.
+func (m App) handleEnvironmentKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// Delegate all keys to the environment panel.
+	p, cmd := m.environmentPanel.Update(msg)
+	m.environmentPanel = p.(panels.EnvironmentPanel)
 	return m, cmd
 }
 
@@ -506,7 +607,13 @@ func (m App) renderDetailPanel(width, height int) string {
 		var sectionPanel string
 		switch m.activeTab {
 		case 1:
-			sectionPanel = m.deploymentsPanel.View(width, sectionHeight, focused)
+			if m.showDeployScript {
+				sectionPanel = m.deployScriptPanel.View(width, sectionHeight, focused)
+			} else {
+				sectionPanel = m.deploymentsPanel.View(width, sectionHeight, focused)
+			}
+		case 2:
+			sectionPanel = m.environmentPanel.View(width, sectionHeight, focused)
 		default:
 			// For tabs not yet implemented, show the site info panel.
 			sectionPanel = m.siteInfo.View(width, sectionHeight, focused)
@@ -552,8 +659,12 @@ func (m App) renderHelpBar() string {
 	case FocusContextList:
 		helpBindings = m.siteList.HelpBindings()
 	case FocusDetailPanel:
-		if m.selectedSite != nil && m.activeTab == 1 {
+		if m.selectedSite != nil && m.activeTab == 1 && m.showDeployScript {
+			helpBindings = m.deployScriptPanel.HelpBindings()
+		} else if m.selectedSite != nil && m.activeTab == 1 {
 			helpBindings = m.deploymentsPanel.HelpBindings()
+		} else if m.selectedSite != nil && m.activeTab == 2 {
+			helpBindings = m.environmentPanel.HelpBindings()
 		} else if m.selectedSite != nil {
 			helpBindings = m.siteInfo.HelpBindings()
 		} else {

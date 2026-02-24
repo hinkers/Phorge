@@ -449,6 +449,7 @@ func (p DeploymentsPanel) HelpBindings() []HelpBinding {
 		{Key: "j/k", Desc: "navigate"},
 		{Key: "enter", Desc: "output"},
 		{Key: "d", Desc: "deploy"},
+		{Key: "S", Desc: "script"},
 		{Key: "r", Desc: "reset status"},
 		{Key: "g/G", Desc: "top/bottom"},
 		{Key: "esc", Desc: "back"},
