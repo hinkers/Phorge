@@ -39,6 +39,8 @@ type App struct {
 	// Sub-model panels.
 	serverList panels.ServerList
 	siteList   panels.SiteList
+	serverInfo panels.ServerInfo
+	siteInfo   panels.SiteInfo
 
 	// Data kept at the app level for cross-panel concerns.
 	selectedSrv  *forge.Server
@@ -68,6 +70,8 @@ func NewApp(cfg *config.Config) App {
 		activeTab:     1,
 		serverList:    panels.NewServerList(),
 		siteList:      panels.NewSiteList(),
+		serverInfo:    panels.NewServerInfo(),
+		siteInfo:      panels.NewSiteInfo(),
 		globalKeys:    DefaultGlobalKeyMap(),
 		navKeys:       DefaultNavKeyMap(),
 		sectionKeys:   DefaultSectionKeyMap(),
@@ -97,6 +101,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.serverList = m.serverList.SetServers(msg.servers).SetLoading(false)
 		sel := m.serverList.Selected()
 		m.selectedSrv = sel
+		m.serverInfo = m.serverInfo.SetServer(sel)
 		if sel != nil {
 			m.siteList = m.siteList.SetServerName(sel.Name)
 			return m, m.fetchSites(sel.ID)
@@ -106,12 +111,16 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sitesLoadedMsg:
 		m.siteList = m.siteList.SetSites(msg.sites)
 		m.selectedSite = m.siteList.Selected()
+		m.siteInfo = m.siteInfo.SetSite(m.selectedSite)
 		return m, nil
 
 	// Panel-emitted messages: a server was navigated to.
 	case panels.ServerSelectedMsg:
 		srv := msg.Server
 		m.selectedSrv = &srv
+		m.serverInfo = m.serverInfo.SetServer(&srv)
+		m.selectedSite = nil
+		m.siteInfo = m.siteInfo.SetSite(nil)
 		m.siteList = m.siteList.SetServerName(srv.Name)
 		return m, m.fetchSites(srv.ID)
 
@@ -119,6 +128,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case panels.SiteSelectedMsg:
 		site := msg.Site
 		m.selectedSite = &site
+		m.siteInfo = m.siteInfo.SetSite(&site)
 		return m, nil
 
 	case errMsg:
@@ -315,67 +325,14 @@ func (m App) View() tea.View {
 }
 
 // renderDetailPanel renders the bottom-right detail/preview panel.
+// It delegates to SiteInfo when a site is selected, otherwise ServerInfo.
 func (m App) renderDetailPanel(width, height int) string {
-	style := InactiveBorderStyle
-	titleColor := colorSubtle
-	if m.focus == FocusDetailPanel {
-		style = ActiveBorderStyle
-		titleColor = colorPrimary
-	}
+	focused := m.focus == FocusDetailPanel
 
-	title := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(titleColor).
-		Render(" " + m.tabName() + " ")
-
-	innerWidth := width - 2
-	innerHeight := height - 2
-	if innerWidth < 0 {
-		innerWidth = 0
-	}
-	if innerHeight < 0 {
-		innerHeight = 0
-	}
-
-	var lines []string
-
-	// Show server/site info as a placeholder.
-	if m.selectedSrv != nil {
-		lines = append(lines, renderKV("Server", m.selectedSrv.Name, innerWidth))
-		lines = append(lines, renderKV("IP", m.selectedSrv.IPAddress, innerWidth))
-		lines = append(lines, renderKV("PHP", m.selectedSrv.PHPVersion, innerWidth))
-		lines = append(lines, renderKV("Provider", m.selectedSrv.Provider, innerWidth))
-		lines = append(lines, renderKV("Region", m.selectedSrv.Region, innerWidth))
-		lines = append(lines, renderKV("Status", m.selectedSrv.Status, innerWidth))
-	}
 	if m.selectedSite != nil {
-		if len(lines) > 0 {
-			lines = append(lines, "")
-		}
-		lines = append(lines, renderKV("Site", m.selectedSite.Name, innerWidth))
-		lines = append(lines, renderKV("Repository", m.selectedSite.Repository, innerWidth))
-		lines = append(lines, renderKV("Branch", m.selectedSite.RepositoryBranch, innerWidth))
-		lines = append(lines, renderKV("Type", m.selectedSite.ProjectType, innerWidth))
-		lines = append(lines, renderKV("Status", m.selectedSite.Status, innerWidth))
+		return m.siteInfo.View(width, height, focused)
 	}
-	if m.selectedSrv == nil {
-		lines = append(lines, NormalItemStyle.Render("No server selected"))
-	}
-
-	// Tab bar
-	tabBar := m.renderTabBar(innerWidth)
-	lines = append([]string{tabBar, ""}, lines...)
-
-	for len(lines) < innerHeight {
-		lines = append(lines, "")
-	}
-
-	content := strings.Join(lines, "\n")
-
-	return style.
-		Width(innerWidth).
-		Height(innerHeight).
-		Render(title + "\n" + content)
+	return m.serverInfo.View(width, height, focused)
 }
 
 // renderTabBar renders the numbered section tabs at the top of the detail panel.
@@ -413,11 +370,10 @@ func (m App) renderHelpBar() string {
 	case FocusContextList:
 		helpBindings = m.siteList.HelpBindings()
 	case FocusDetailPanel:
-		helpBindings = []panels.HelpBinding{
-			{Key: "1-9", Desc: "sections"},
-			{Key: "esc", Desc: "back"},
-			{Key: "tab", Desc: "switch panel"},
-			{Key: "q", Desc: "quit"},
+		if m.selectedSite != nil {
+			helpBindings = m.siteInfo.HelpBindings()
+		} else {
+			helpBindings = m.serverInfo.HelpBindings()
 		}
 	}
 
@@ -514,13 +470,3 @@ func helpBinding(k, desc string) string {
 	return HelpKeyStyle.Render(k) + " " + HelpBarStyle.Render(desc)
 }
 
-// renderKV renders a label-value pair for the detail panel.
-func renderKV(label, value string, maxWidth int) string {
-	if value == "" {
-		value = "-"
-	}
-	l := LabelStyle.Render(label + ":")
-	v := ValueStyle.Render(value)
-	line := l + " " + v
-	return theme.Truncate(line, maxWidth)
-}
