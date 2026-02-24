@@ -58,6 +58,11 @@ var (
 			Bold(true)
 )
 
+// Filter indicator style (shown when a filter is active but the input is hidden).
+var FilterIndicatorStyle = lipgloss.NewStyle().
+	Foreground(ColorHighlight).
+	Italic(true)
+
 // Status indicator styles.
 var (
 	ActiveStatusStyle = lipgloss.NewStyle().

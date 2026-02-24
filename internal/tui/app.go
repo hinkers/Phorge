@@ -173,7 +173,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.selectedSrv = sel
 		m.serverInfo = m.serverInfo.SetServer(sel)
 		if sel != nil {
-			m.siteList = m.siteList.SetServerName(sel.Name)
+			m.siteList = m.siteList.SetServerName(sel.Name).SetLoading(true)
 			return m, m.fetchSites(sel.ID)
 		}
 		return m, nil
@@ -191,7 +191,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.serverInfo = m.serverInfo.SetServer(&srv)
 		m.selectedSite = nil
 		m.siteInfo = m.siteInfo.SetSite(nil)
-		m.siteList = m.siteList.SetServerName(srv.Name)
+		m.siteList = m.siteList.SetServerName(srv.Name).SetLoading(true)
 		return m, m.fetchSites(srv.ID)
 
 	// Panel-emitted messages: a site was navigated to.
@@ -523,6 +523,8 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case errMsg:
 		m.loading = false
+		m.serverList = m.serverList.SetLoading(false)
+		m.siteList = m.siteList.SetLoading(false)
 		m.toast = fmt.Sprintf("Error: %v", msg.err)
 		m.toastIsErr = true
 		return m, m.clearToastAfter(5 * time.Second)
@@ -585,6 +587,21 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleKey processes key events, routing to global keys first, then focus-specific keys.
 func (m App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// When a list panel's filter input is active, route all key events
+	// directly to that panel (bypass global keys like q, tab, etc.).
+	if m.focus == FocusServerList && m.serverList.FilterActive() {
+		var cmd tea.Cmd
+		panel, cmd := m.serverList.Update(msg)
+		m.serverList = panel.(panels.ServerList)
+		return m, cmd
+	}
+	if m.focus == FocusContextList && m.siteList.FilterActive() {
+		var cmd tea.Cmd
+		panel, cmd := m.siteList.Update(msg)
+		m.siteList = panel.(panels.SiteList)
+		return m, cmd
+	}
+
 	// Global keys take priority.
 	switch {
 	case key.Matches(msg, m.globalKeys.Quit):
