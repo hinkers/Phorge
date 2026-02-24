@@ -10,7 +10,14 @@ import (
 	"github.com/hinke/phorge/internal/tui"
 )
 
+var version = "dev"
+
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Printf("phorge %s\n", version)
+		os.Exit(0)
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
