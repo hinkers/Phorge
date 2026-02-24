@@ -6,8 +6,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/hinke/phorge/internal/config"
-	"github.com/hinke/phorge/internal/tui"
+	"github.com/hinkers/Phorge/internal/config"
+	"github.com/hinkers/Phorge/internal/tui"
 )
 
 var version = "dev"

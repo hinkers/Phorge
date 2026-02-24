@@ -23,7 +23,7 @@
 
 ```bash
 cd /path/to/new/phorge-go  # or a new directory
-go mod init github.com/hinke/phorge
+go mod init github.com/hinkers/Phorge
 ```
 
 **Step 2: Create entry point**
@@ -1175,7 +1175,7 @@ var SiteActionKeys = SiteActionKeyMap{
 package tui
 
 import (
-	"github.com/hinke/phorge/internal/forge"
+	"github.com/hinkers/Phorge/internal/forge"
 )
 
 // Data loading messages
@@ -1211,8 +1211,8 @@ import (
 	"github.com/charmbracelet/bubbles/v2/key"
 	tea "github.com/charmbracelet/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss/v2"
-	"github.com/hinke/phorge/internal/config"
-	"github.com/hinke/phorge/internal/forge"
+	"github.com/hinkers/Phorge/internal/config"
+	"github.com/hinkers/Phorge/internal/forge"
 )
 
 type Focus int
@@ -1538,8 +1538,8 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea/v2"
-	"github.com/hinke/phorge/internal/config"
-	"github.com/hinke/phorge/internal/tui"
+	"github.com/hinkers/Phorge/internal/config"
+	"github.com/hinkers/Phorge/internal/tui"
 )
 
 func main() {

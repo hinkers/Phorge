@@ -9,9 +9,9 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	lipgloss "charm.land/lipgloss/v2"
 
-	"github.com/hinke/phorge/internal/config"
-	"github.com/hinke/phorge/internal/forge"
-	"github.com/hinke/phorge/internal/tui/theme"
+	"github.com/hinkers/Phorge/internal/config"
+	"github.com/hinkers/Phorge/internal/forge"
+	"github.com/hinkers/Phorge/internal/tui/theme"
 )
 
 // setupValidateMsg is returned after attempting to validate the API key.

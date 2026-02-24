@@ -6,8 +6,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
 
-	"github.com/hinke/phorge/internal/forge"
-	"github.com/hinke/phorge/internal/tui/theme"
+	"github.com/hinkers/Phorge/internal/forge"
+	"github.com/hinkers/Phorge/internal/tui/theme"
 )
 
 // SiteInfo displays site details as key-value pairs in the detail panel.

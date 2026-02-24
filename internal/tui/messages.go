@@ -1,6 +1,6 @@
 package tui
 
-import "github.com/hinke/phorge/internal/forge"
+import "github.com/hinkers/Phorge/internal/forge"
 
 // serversLoadedMsg is sent when the server list has been fetched from the API.
 type serversLoadedMsg struct {

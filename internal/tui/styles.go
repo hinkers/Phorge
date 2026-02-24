@@ -4,7 +4,7 @@ package tui
 // existing code within the tui package continues to compile unchanged.  New
 // code should import theme directly when possible.
 
-import "github.com/hinke/phorge/internal/tui/theme"
+import "github.com/hinkers/Phorge/internal/tui/theme"
 
 // Colour aliases.
 var (

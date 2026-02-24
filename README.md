@@ -53,20 +53,20 @@ Browse servers, trigger deployments, edit environment files, manage databases, S
 ### From source (requires Go 1.22+)
 
 ```bash
-go install github.com/hinke/phorge/cmd/phorge@latest
+go install github.com/hinkers/Phorge/cmd/phorge@latest
 ```
 
 ### Build from repo
 
 ```bash
-git clone https://github.com/hinke/phorge.git
+git clone https://github.com/hinkers/Phorge.git
 cd phorge
 make build
 ```
 
 ### From releases
 
-Download the latest binary for your platform from [GitHub Releases](https://github.com/hinke/phorge/releases).
+Download the latest binary for your platform from [GitHub Releases](https://github.com/hinkers/Phorge/releases).
 
 ## Usage
 

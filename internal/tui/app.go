@@ -11,11 +11,11 @@ import (
 	"charm.land/bubbles/v2/key"
 	lipgloss "charm.land/lipgloss/v2"
 
-	"github.com/hinke/phorge/internal/config"
-	"github.com/hinke/phorge/internal/forge"
-	"github.com/hinke/phorge/internal/tui/components"
-	"github.com/hinke/phorge/internal/tui/panels"
-	"github.com/hinke/phorge/internal/tui/theme"
+	"github.com/hinkers/Phorge/internal/config"
+	"github.com/hinkers/Phorge/internal/forge"
+	"github.com/hinkers/Phorge/internal/tui/components"
+	"github.com/hinkers/Phorge/internal/tui/panels"
+	"github.com/hinkers/Phorge/internal/tui/theme"
 )
 
 // Focus tracks which panel has keyboard focus.

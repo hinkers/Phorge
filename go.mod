@@ -1,4 +1,4 @@
-module github.com/hinke/phorge
+module github.com/hinkers/Phorge
 
 go 1.25.0
 

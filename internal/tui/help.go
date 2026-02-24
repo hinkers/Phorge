@@ -8,7 +8,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	lipgloss "charm.land/lipgloss/v2"
 
-	"github.com/hinke/phorge/internal/tui/theme"
+	"github.com/hinkers/Phorge/internal/tui/theme"
 )
 
 // helpSection groups keybindings under a section heading.

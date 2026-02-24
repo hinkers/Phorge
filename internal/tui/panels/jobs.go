@@ -9,8 +9,8 @@ import (
 	"charm.land/bubbles/v2/key"
 	lipgloss "charm.land/lipgloss/v2"
 
-	"github.com/hinke/phorge/internal/forge"
-	"github.com/hinke/phorge/internal/tui/theme"
+	"github.com/hinkers/Phorge/internal/forge"
+	"github.com/hinkers/Phorge/internal/tui/theme"
 )
 
 // --- Messages ---

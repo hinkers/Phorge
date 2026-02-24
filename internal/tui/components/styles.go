@@ -3,7 +3,7 @@ package components
 import (
 	lipgloss "charm.land/lipgloss/v2"
 
-	"github.com/hinke/phorge/internal/tui/theme"
+	"github.com/hinkers/Phorge/internal/tui/theme"
 )
 
 // Dialog box style — rounded border, centered content.
