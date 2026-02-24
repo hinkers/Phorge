@@ -185,13 +185,3 @@ func parseError(resp *http.Response) error {
 	}
 }
 
-// List returns all servers for the authenticated user.
-// This is a minimal implementation used by client tests; the full
-// ServersService API will be added in a later task.
-func (s *ServersService) List(ctx context.Context) ([]Server, error) {
-	var resp struct {
-		Servers []Server `json:"servers"`
-	}
-	err := s.client.do(ctx, http.MethodGet, "/servers", nil, &resp)
-	return resp.Servers, err
-}
