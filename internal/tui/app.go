@@ -91,6 +91,9 @@ type App struct {
 	// It is killed when the external database client exits.
 	tunnelProc *os.Process
 
+	// Help modal overlay.
+	helpModal HelpModal
+
 	// Keymaps
 	globalKeys    GlobalKeyMap
 	navKeys       NavKeyMap
@@ -111,6 +114,7 @@ func NewApp(cfg *config.Config) App {
 		siteList:      panels.NewSiteList(),
 		serverInfo:    panels.NewServerInfo(),
 		siteInfo:      panels.NewSiteInfo(),
+		helpModal:     NewHelpModal(),
 		globalKeys:    DefaultGlobalKeyMap(),
 		navKeys:       DefaultNavKeyMap(),
 		sectionKeys:   DefaultSectionKeyMap(),
@@ -126,6 +130,15 @@ func (m App) Init() tea.Cmd {
 
 // Update handles all incoming messages.
 func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// If the help modal is active, route all key events to it.
+	if m.helpModal.Active() {
+		if _, ok := msg.(tea.KeyPressMsg); ok {
+			var cmd tea.Cmd
+			m.helpModal, cmd = m.helpModal.Update(msg)
+			return m, cmd
+		}
+	}
+
 	// If an input dialog is active, route all key events to it.
 	if m.inputDialog != nil && m.inputDialog.Active {
 		if _, ok := msg.(tea.KeyPressMsg); ok {
@@ -576,6 +589,9 @@ func (m App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.globalKeys.Quit):
 		return m, tea.Quit
+	case key.Matches(msg, m.globalKeys.Help):
+		m.helpModal = m.helpModal.Toggle()
+		return m, nil
 	case key.Matches(msg, m.globalKeys.Tab):
 		m.focus = (m.focus + 1) % panelCount
 		return m, nil
@@ -1329,6 +1345,14 @@ func (m App) View() tea.View {
 	// Overlay the confirmation dialog if active.
 	if m.confirm != nil && m.confirm.Active {
 		overlay := m.confirm.View(m.width, m.height)
+		if overlay != "" {
+			content = overlay
+		}
+	}
+
+	// Overlay the help modal if active.
+	if m.helpModal.Active() {
+		overlay := m.helpModal.View(m.width, m.height)
 		if overlay != "" {
 			content = overlay
 		}

@@ -18,8 +18,24 @@ func main() {
 	}
 
 	if cfg.Forge.APIKey == "" {
-		fmt.Fprintln(os.Stderr, "No API key configured. Set it in ~/.config/phorge/config.toml")
-		os.Exit(1)
+		// Run the first-run setup flow to collect the API key.
+		setupProgram := tea.NewProgram(tui.NewSetup(cfg))
+		if _, err := setupProgram.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "Setup error: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Reload config after setup (the setup flow saves the key).
+		cfg, err = config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+			os.Exit(1)
+		}
+
+		// If still no API key (user cancelled), exit gracefully.
+		if cfg.Forge.APIKey == "" {
+			return
+		}
 	}
 
 	p := tea.NewProgram(tui.NewApp(cfg))

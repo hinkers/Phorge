@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -250,16 +249,4 @@ func (m *App) cleanupTunnel() {
 		_, _ = m.tunnelProc.Wait()
 		m.tunnelProc = nil
 	}
-}
-
-// setLazysqlEnv sets environment variables on the lazysql command
-// for database credentials that may not be in the DSN.
-func setLazysqlEnv(cmd *exec.Cmd, msg dbReadyMsg, localPort int) {
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("DB_HOST=127.0.0.1"),
-		fmt.Sprintf("DB_PORT=%d", localPort),
-		fmt.Sprintf("DB_USER=%s", msg.username),
-		fmt.Sprintf("DB_PASSWORD=%s", msg.password),
-		fmt.Sprintf("DB_NAME=%s", msg.database),
-	)
 }
