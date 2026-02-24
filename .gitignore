@@ -1,26 +1,11 @@
-__pycache__/
-*.py[cod]
-*$py.class
-*.egg-info/
-dist/
-build/
-.eggs/
-*.egg
-.venv/
-venv/
-.env
-*.toml.bak
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-htmlcov/
-.coverage
-.claude/
-.worktrees/
-
 # Go
 /phorge
 /phorge.exe
 *.test
 *.out
 /dist/
+
+# General
+.env
+.claude/
+.worktrees/
