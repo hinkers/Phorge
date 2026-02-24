@@ -114,9 +114,9 @@ type SectionKeyMap struct {
 	Databases   key.Binding // 3
 	SSL         key.Binding // 4
 	Workers     key.Binding // 5
-	Commands    key.Binding // 6
-	Logs        key.Binding // 7
-	Git         key.Binding // 8
+	Daemons     key.Binding // 6
+	Firewall    key.Binding // 7
+	Jobs        key.Binding // 8
 	Domains     key.Binding // 9
 }
 
@@ -143,17 +143,17 @@ func DefaultSectionKeyMap() SectionKeyMap {
 			key.WithKeys("5"),
 			key.WithHelp("5", "workers"),
 		),
-		Commands: key.NewBinding(
+		Daemons: key.NewBinding(
 			key.WithKeys("6"),
-			key.WithHelp("6", "commands"),
+			key.WithHelp("6", "daemons"),
 		),
-		Logs: key.NewBinding(
+		Firewall: key.NewBinding(
 			key.WithKeys("7"),
-			key.WithHelp("7", "logs"),
+			key.WithHelp("7", "firewall"),
 		),
-		Git: key.NewBinding(
+		Jobs: key.NewBinding(
 			key.WithKeys("8"),
-			key.WithHelp("8", "git"),
+			key.WithHelp("8", "jobs"),
 		),
 		Domains: key.NewBinding(
 			key.WithKeys("9"),

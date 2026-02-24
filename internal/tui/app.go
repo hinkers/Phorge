@@ -45,13 +45,27 @@ type App struct {
 	deploymentsPanel  panels.DeploymentsPanel
 	deployScriptPanel panels.DeployScriptPanel
 	environmentPanel  panels.EnvironmentPanel
+	databasesPanel    panels.DatabasesPanel
+	dbUsersPanel      panels.DBUsersPanel
+	sslPanel          panels.SSLPanel
+	workersPanel      panels.WorkersPanel
+	daemonsPanel      panels.DaemonsPanel
+	firewallPanel     panels.FirewallPanel
+	jobsPanel         panels.JobsPanel
 
 	// showDeployScript is true when viewing the deploy script sub-view
 	// from within the deployments tab.
 	showDeployScript bool
 
+	// showDBUsers is true when viewing the database users sub-view
+	// from within the databases tab.
+	showDBUsers bool
+
 	// Confirmation dialog state.
 	confirm *components.Confirm
+
+	// Input dialog state.
+	inputDialog *components.Input
 
 	// Data kept at the app level for cross-panel concerns.
 	selectedSrv  *forge.Server
@@ -98,6 +112,15 @@ func (m App) Init() tea.Cmd {
 
 // Update handles all incoming messages.
 func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// If an input dialog is active, route all key events to it.
+	if m.inputDialog != nil && m.inputDialog.Active {
+		if _, ok := msg.(tea.KeyPressMsg); ok {
+			i, cmd := m.inputDialog.Update(msg)
+			m.inputDialog = &i
+			return m, cmd
+		}
+	}
+
 	// If a confirmation dialog is active, route all key events to it.
 	if m.confirm != nil && m.confirm.Active {
 		if _, ok := msg.(tea.KeyPressMsg); ok {
@@ -151,19 +174,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.siteInfo = m.siteInfo.SetSite(&site)
 		// Re-initialise the active detail panel.
 		if m.focus == FocusDetailPanel && m.selectedSrv != nil {
-			switch m.activeTab {
-			case 1:
-				m.showDeployScript = false
-				m.deploymentsPanel = panels.NewDeploymentsPanel(
-					m.forge, m.selectedSrv.ID, site.ID,
-				)
-				return m, m.deploymentsPanel.LoadDeployments()
-			case 2:
-				m.environmentPanel = panels.NewEnvironmentPanel(
-					m.forge, m.selectedSrv.ID, site.ID, m.config.Editor.Command,
-				)
-				return m, m.environmentPanel.LoadEnv()
-			}
+			return m.initTabPanel(m.activeTab, m.selectedSrv.ID, site.ID)
 		}
 		return m, nil
 
@@ -233,6 +244,177 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toastIsErr = false
 		}
 		return m, m.clearToastAfter(3 * time.Second)
+
+	// Databases panel messages.
+	case panels.DatabasesLoadedMsg:
+		p, cmd := m.databasesPanel.Update(msg)
+		m.databasesPanel = p.(panels.DatabasesPanel)
+		return m, cmd
+
+	case panels.DatabaseCreatedMsg:
+		m.toast = "Database created"
+		m.toastIsErr = false
+		return m, tea.Batch(
+			m.clearToastAfter(3*time.Second),
+			m.databasesPanel.LoadDatabases(),
+		)
+
+	case panels.DatabaseDeletedMsg:
+		m.toast = "Database deleted"
+		m.toastIsErr = false
+		return m, tea.Batch(
+			m.clearToastAfter(3*time.Second),
+			m.databasesPanel.LoadDatabases(),
+		)
+
+	// Database users panel messages.
+	case panels.DBUsersLoadedMsg:
+		p, cmd := m.dbUsersPanel.Update(msg)
+		m.dbUsersPanel = p.(panels.DBUsersPanel)
+		return m, cmd
+
+	case panels.DBUserCreatedMsg:
+		m.toast = "Database user created"
+		m.toastIsErr = false
+		return m, tea.Batch(
+			m.clearToastAfter(3*time.Second),
+			m.dbUsersPanel.LoadUsers(),
+		)
+
+	case panels.DBUserDeletedMsg:
+		m.toast = "Database user deleted"
+		m.toastIsErr = false
+		return m, tea.Batch(
+			m.clearToastAfter(3*time.Second),
+			m.dbUsersPanel.LoadUsers(),
+		)
+
+	// SSL panel messages.
+	case panels.CertsLoadedMsg:
+		p, cmd := m.sslPanel.Update(msg)
+		m.sslPanel = p.(panels.SSLPanel)
+		return m, cmd
+
+	case panels.CertCreatedMsg:
+		m.toast = "Certificate created"
+		m.toastIsErr = false
+		return m, tea.Batch(
+			m.clearToastAfter(3*time.Second),
+			m.sslPanel.LoadCerts(),
+		)
+
+	case panels.CertActivatedMsg:
+		m.toast = "Certificate activated"
+		m.toastIsErr = false
+		return m, tea.Batch(
+			m.clearToastAfter(3*time.Second),
+			m.sslPanel.LoadCerts(),
+		)
+
+	case panels.CertDeletedMsg:
+		m.toast = "Certificate deleted"
+		m.toastIsErr = false
+		return m, tea.Batch(
+			m.clearToastAfter(3*time.Second),
+			m.sslPanel.LoadCerts(),
+		)
+
+	// Workers panel messages.
+	case panels.WorkersLoadedMsg:
+		p, cmd := m.workersPanel.Update(msg)
+		m.workersPanel = p.(panels.WorkersPanel)
+		return m, cmd
+
+	case panels.WorkerCreatedMsg:
+		m.toast = "Worker created"
+		m.toastIsErr = false
+		return m, tea.Batch(
+			m.clearToastAfter(3*time.Second),
+			m.workersPanel.LoadWorkers(),
+		)
+
+	case panels.WorkerRestartedMsg:
+		m.toast = "Worker restarted"
+		m.toastIsErr = false
+		return m, tea.Batch(
+			m.clearToastAfter(3*time.Second),
+			m.workersPanel.LoadWorkers(),
+		)
+
+	case panels.WorkerDeletedMsg:
+		m.toast = "Worker deleted"
+		m.toastIsErr = false
+		return m, tea.Batch(
+			m.clearToastAfter(3*time.Second),
+			m.workersPanel.LoadWorkers(),
+		)
+
+	// Daemons panel messages.
+	case panels.DaemonsLoadedMsg:
+		p, cmd := m.daemonsPanel.Update(msg)
+		m.daemonsPanel = p.(panels.DaemonsPanel)
+		return m, cmd
+
+	case panels.DaemonCreatedMsg:
+		m.toast = "Daemon created"
+		m.toastIsErr = false
+		return m, tea.Batch(
+			m.clearToastAfter(3*time.Second),
+			m.daemonsPanel.LoadDaemons(),
+		)
+
+	case panels.DaemonRestartedMsg:
+		m.toast = "Daemon restarted"
+		m.toastIsErr = false
+		return m, tea.Batch(
+			m.clearToastAfter(3*time.Second),
+			m.daemonsPanel.LoadDaemons(),
+		)
+
+	case panels.DaemonDeletedMsg:
+		m.toast = "Daemon deleted"
+		m.toastIsErr = false
+		return m, tea.Batch(
+			m.clearToastAfter(3*time.Second),
+			m.daemonsPanel.LoadDaemons(),
+		)
+
+	// Firewall panel messages.
+	case panels.FirewallLoadedMsg:
+		p, cmd := m.firewallPanel.Update(msg)
+		m.firewallPanel = p.(panels.FirewallPanel)
+		return m, cmd
+
+	case panels.FirewallCreatedMsg:
+		m.toast = "Firewall rule created"
+		m.toastIsErr = false
+		return m, tea.Batch(
+			m.clearToastAfter(3*time.Second),
+			m.firewallPanel.LoadRules(),
+		)
+
+	case panels.FirewallDeletedMsg:
+		m.toast = "Firewall rule deleted"
+		m.toastIsErr = false
+		return m, tea.Batch(
+			m.clearToastAfter(3*time.Second),
+			m.firewallPanel.LoadRules(),
+		)
+
+	// Jobs panel messages.
+	case panels.JobsLoadedMsg:
+		p, cmd := m.jobsPanel.Update(msg)
+		m.jobsPanel = p.(panels.JobsPanel)
+		return m, cmd
+
+	// Input dialog results.
+	case components.InputResult:
+		m.inputDialog = nil
+		return m.handleInputResult(msg)
+
+	case components.InputCancelled:
+		m.inputDialog = nil
+		return m, nil
 
 	// Panel-level errors (from panel API commands).
 	case panels.PanelErrMsg:
@@ -351,19 +533,7 @@ func (m App) handleContextListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.focus = FocusDetailPanel
 		// Initialise the active tab panel when entering the detail panel.
 		if m.selectedSite != nil && m.selectedSrv != nil {
-			switch m.activeTab {
-			case 1:
-				m.showDeployScript = false
-				m.deploymentsPanel = panels.NewDeploymentsPanel(
-					m.forge, m.selectedSrv.ID, m.selectedSite.ID,
-				)
-				return m, m.deploymentsPanel.LoadDeployments()
-			case 2:
-				m.environmentPanel = panels.NewEnvironmentPanel(
-					m.forge, m.selectedSrv.ID, m.selectedSite.ID, m.config.Editor.Command,
-				)
-				return m, m.environmentPanel.LoadEnv()
-			}
+			return m.initTabPanel(m.activeTab, m.selectedSrv.ID, m.selectedSite.ID)
 		}
 		return m, nil
 	case key.Matches(msg, m.navKeys.Back):
@@ -389,6 +559,15 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		p, cmd := m.deployScriptPanel.Update(msg)
 		m.deployScriptPanel = p.(panels.DeployScriptPanel)
 		return m, cmd
+	}
+
+	// If the DB users sub-view is active, route keys to it.
+	if m.activeTab == 3 && m.showDBUsers {
+		if key.Matches(msg, m.navKeys.Back) {
+			m.showDBUsers = false
+			return m, nil
+		}
+		return m.handleDBUsersKey(msg)
 	}
 
 	// If the deployments panel is showing output and user presses Esc,
@@ -417,11 +596,11 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.switchToTab(4)
 	case key.Matches(msg, m.sectionKeys.Workers):
 		return m.switchToTab(5)
-	case key.Matches(msg, m.sectionKeys.Commands):
+	case key.Matches(msg, m.sectionKeys.Daemons):
 		return m.switchToTab(6)
-	case key.Matches(msg, m.sectionKeys.Logs):
+	case key.Matches(msg, m.sectionKeys.Firewall):
 		return m.switchToTab(7)
-	case key.Matches(msg, m.sectionKeys.Git):
+	case key.Matches(msg, m.sectionKeys.Jobs):
 		return m.switchToTab(8)
 	case key.Matches(msg, m.sectionKeys.Domains):
 		return m.switchToTab(9)
@@ -437,6 +616,38 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleEnvironmentKey(msg)
 	}
 
+	// Databases (tab 3) - server-level.
+	if m.activeTab == 3 && m.selectedSrv != nil {
+		return m.handleDatabasesKey(msg)
+	}
+
+	// SSL (tab 4) - site-level.
+	if m.activeTab == 4 && m.selectedSite != nil {
+		return m.handleSSLKey(msg)
+	}
+
+	// Workers (tab 5) - site-level.
+	if m.activeTab == 5 && m.selectedSite != nil {
+		return m.handleWorkersKey(msg)
+	}
+
+	// Daemons (tab 6) - server-level.
+	if m.activeTab == 6 && m.selectedSrv != nil {
+		return m.handleDaemonsKey(msg)
+	}
+
+	// Firewall (tab 7) - server-level.
+	if m.activeTab == 7 && m.selectedSrv != nil {
+		return m.handleFirewallKey(msg)
+	}
+
+	// Jobs (tab 8) - server-level, read-only.
+	if m.activeTab == 8 && m.selectedSrv != nil {
+		p, cmd := m.jobsPanel.Update(msg)
+		m.jobsPanel = p.(panels.JobsPanel)
+		return m, cmd
+	}
+
 	return m, nil
 }
 
@@ -444,24 +655,72 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m App) switchToTab(tab int) (tea.Model, tea.Cmd) {
 	m.activeTab = tab
 	m.showDeployScript = false // always reset sub-view when switching tabs
+	m.showDBUsers = false      // always reset sub-view when switching tabs
 
-	if m.selectedSite == nil || m.selectedSrv == nil {
+	if m.selectedSrv == nil {
 		return m, nil
 	}
 
-	switch tab {
-	case 1:
-		m.deploymentsPanel = panels.NewDeploymentsPanel(
-			m.forge, m.selectedSrv.ID, m.selectedSite.ID,
-		)
-		return m, m.deploymentsPanel.LoadDeployments()
-	case 2:
-		m.environmentPanel = panels.NewEnvironmentPanel(
-			m.forge, m.selectedSrv.ID, m.selectedSite.ID, m.config.Editor.Command,
-		)
-		return m, m.environmentPanel.LoadEnv()
+	// Server-level tabs work even without a selected site.
+	// Site-level tabs require both server and site.
+	siteID := int64(0)
+	if m.selectedSite != nil {
+		siteID = m.selectedSite.ID
 	}
 
+	return m.initTabPanel(tab, m.selectedSrv.ID, siteID)
+}
+
+// initTabPanel creates and loads the panel for the given tab.
+// For site-level tabs (1, 2, 4, 5) siteID must be non-zero.
+// For server-level tabs (3, 6, 7, 8, 9) only serverID is needed.
+func (m App) initTabPanel(tab int, serverID, siteID int64) (tea.Model, tea.Cmd) {
+	switch tab {
+	case 1:
+		if siteID == 0 {
+			return m, nil
+		}
+		m.showDeployScript = false
+		m.deploymentsPanel = panels.NewDeploymentsPanel(m.forge, serverID, siteID)
+		return m, m.deploymentsPanel.LoadDeployments()
+	case 2:
+		if siteID == 0 {
+			return m, nil
+		}
+		m.environmentPanel = panels.NewEnvironmentPanel(
+			m.forge, serverID, siteID, m.config.Editor.Command,
+		)
+		return m, m.environmentPanel.LoadEnv()
+	case 3:
+		// Databases are server-level.
+		m.showDBUsers = false
+		m.databasesPanel = panels.NewDatabasesPanel(m.forge, serverID)
+		return m, m.databasesPanel.LoadDatabases()
+	case 4:
+		if siteID == 0 {
+			return m, nil
+		}
+		m.sslPanel = panels.NewSSLPanel(m.forge, serverID, siteID)
+		return m, m.sslPanel.LoadCerts()
+	case 5:
+		if siteID == 0 {
+			return m, nil
+		}
+		m.workersPanel = panels.NewWorkersPanel(m.forge, serverID, siteID)
+		return m, m.workersPanel.LoadWorkers()
+	case 6:
+		// Daemons are server-level (reusing tab 6 for now).
+		m.daemonsPanel = panels.NewDaemonsPanel(m.forge, serverID)
+		return m, m.daemonsPanel.LoadDaemons()
+	case 7:
+		// Firewall rules are server-level (reusing tab 7 for now).
+		m.firewallPanel = panels.NewFirewallPanel(m.forge, serverID)
+		return m, m.firewallPanel.LoadRules()
+	case 8:
+		// Scheduled jobs are server-level (reusing tab 8 for now).
+		m.jobsPanel = panels.NewJobsPanel(m.forge, serverID)
+		return m, m.jobsPanel.LoadJobs()
+	}
 	return m, nil
 }
 
@@ -505,6 +764,197 @@ func (m App) handleEnvironmentKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// handleDatabasesKey handles keys specific to the databases panel tab.
+func (m App) handleDatabasesKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("c"))):
+		i := components.NewInput("create-db", "Database name:", "my_database")
+		m.inputDialog = &i
+		return m, nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("x"))):
+		if db := m.databasesPanel.SelectedDatabase(); db != nil {
+			c := components.NewConfirm("delete-db", fmt.Sprintf("Delete database %q?", db.Name))
+			m.confirm = &c
+		}
+		return m, nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("u"))):
+		if m.selectedSrv != nil {
+			m.showDBUsers = true
+			m.dbUsersPanel = panels.NewDBUsersPanel(m.forge, m.selectedSrv.ID)
+			return m, m.dbUsersPanel.LoadUsers()
+		}
+		return m, nil
+	}
+
+	p, cmd := m.databasesPanel.Update(msg)
+	m.databasesPanel = p.(panels.DatabasesPanel)
+	return m, cmd
+}
+
+// handleDBUsersKey handles keys specific to the database users sub-view.
+func (m App) handleDBUsersKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("c"))):
+		i := components.NewInput("create-dbuser", "Username:", "forge_user")
+		m.inputDialog = &i
+		return m, nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("x"))):
+		if u := m.dbUsersPanel.SelectedUser(); u != nil {
+			c := components.NewConfirm("delete-dbuser", fmt.Sprintf("Delete user %q?", u.Name))
+			m.confirm = &c
+		}
+		return m, nil
+	}
+
+	p, cmd := m.dbUsersPanel.Update(msg)
+	m.dbUsersPanel = p.(panels.DBUsersPanel)
+	return m, cmd
+}
+
+// handleSSLKey handles keys specific to the SSL panel tab.
+func (m App) handleSSLKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("c"))):
+		i := components.NewInput("create-cert", "Domain(s) (comma-separated):", "example.com")
+		m.inputDialog = &i
+		return m, nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("a"))):
+		if cert := m.sslPanel.SelectedCert(); cert != nil {
+			c := components.NewConfirm("activate-cert", fmt.Sprintf("Activate certificate for %q?", cert.Domain))
+			m.confirm = &c
+		}
+		return m, nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("x"))):
+		if cert := m.sslPanel.SelectedCert(); cert != nil {
+			c := components.NewConfirm("delete-cert", fmt.Sprintf("Delete certificate for %q?", cert.Domain))
+			m.confirm = &c
+		}
+		return m, nil
+	}
+
+	p, cmd := m.sslPanel.Update(msg)
+	m.sslPanel = p.(panels.SSLPanel)
+	return m, cmd
+}
+
+// handleWorkersKey handles keys specific to the workers panel tab.
+func (m App) handleWorkersKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("c"))):
+		c := components.NewConfirm("create-worker", "Create worker with defaults (redis/default/1 proc)?")
+		m.confirm = &c
+		return m, nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
+		if w := m.workersPanel.SelectedWorker(); w != nil {
+			c := components.NewConfirm("restart-worker", fmt.Sprintf("Restart worker %s:%s?", w.Connection, w.Queue))
+			m.confirm = &c
+		}
+		return m, nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("x"))):
+		if w := m.workersPanel.SelectedWorker(); w != nil {
+			c := components.NewConfirm("delete-worker", fmt.Sprintf("Delete worker %s:%s?", w.Connection, w.Queue))
+			m.confirm = &c
+		}
+		return m, nil
+	}
+
+	p, cmd := m.workersPanel.Update(msg)
+	m.workersPanel = p.(panels.WorkersPanel)
+	return m, cmd
+}
+
+// handleDaemonsKey handles keys specific to the daemons panel tab.
+func (m App) handleDaemonsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("c"))):
+		i := components.NewInput("create-daemon", "Daemon command:", "php artisan queue:work")
+		m.inputDialog = &i
+		return m, nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
+		if d := m.daemonsPanel.SelectedDaemon(); d != nil {
+			c := components.NewConfirm("restart-daemon", fmt.Sprintf("Restart daemon %q?", truncateStr(d.Command, 30)))
+			m.confirm = &c
+		}
+		return m, nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("x"))):
+		if d := m.daemonsPanel.SelectedDaemon(); d != nil {
+			c := components.NewConfirm("delete-daemon", fmt.Sprintf("Delete daemon %q?", truncateStr(d.Command, 30)))
+			m.confirm = &c
+		}
+		return m, nil
+	}
+
+	p, cmd := m.daemonsPanel.Update(msg)
+	m.daemonsPanel = p.(panels.DaemonsPanel)
+	return m, cmd
+}
+
+// handleFirewallKey handles keys specific to the firewall panel tab.
+func (m App) handleFirewallKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("c"))):
+		i := components.NewInput("create-firewall", "Rule name and port (name:port):", "HTTP:80")
+		m.inputDialog = &i
+		return m, nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("x"))):
+		if r := m.firewallPanel.SelectedRule(); r != nil {
+			c := components.NewConfirm("delete-firewall", fmt.Sprintf("Delete rule %q?", r.Name))
+			m.confirm = &c
+		}
+		return m, nil
+	}
+
+	p, cmd := m.firewallPanel.Update(msg)
+	m.firewallPanel = p.(panels.FirewallPanel)
+	return m, cmd
+}
+
+// handleInputResult processes the result of an input dialog.
+func (m App) handleInputResult(msg components.InputResult) (tea.Model, tea.Cmd) {
+	value := strings.TrimSpace(msg.Value)
+	if value == "" {
+		return m, nil
+	}
+
+	switch msg.ID {
+	case "create-db":
+		return m, m.databasesPanel.CreateDatabase(value)
+	case "create-dbuser":
+		// Use the username as both name and password for simplicity.
+		return m, m.dbUsersPanel.CreateUser(value, value)
+	case "create-cert":
+		// Split comma-separated domains.
+		domains := strings.Split(value, ",")
+		for i := range domains {
+			domains[i] = strings.TrimSpace(domains[i])
+		}
+		return m, m.sslPanel.CreateLetsEncrypt(domains)
+	case "create-daemon":
+		return m, m.daemonsPanel.CreateDaemon(value)
+	case "create-firewall":
+		// Parse "name:port" format.
+		parts := strings.SplitN(value, ":", 2)
+		name := strings.TrimSpace(parts[0])
+		port := "80"
+		if len(parts) > 1 {
+			port = strings.TrimSpace(parts[1])
+		}
+		return m, m.firewallPanel.CreateRule(name, port)
+	}
+
+	return m, nil
+}
+
 // handleConfirmResult processes the result of a confirmation dialog.
 func (m App) handleConfirmResult(msg components.ConfirmResult) (tea.Model, tea.Cmd) {
 	if !msg.Confirmed {
@@ -522,9 +972,37 @@ func (m App) handleConfirmResult(msg components.ConfirmResult) (tea.Model, tea.C
 		if m.selectedSite != nil && m.selectedSrv != nil {
 			return m, m.deploymentsPanel.ResetDeployStatus()
 		}
+	case "delete-db":
+		return m, m.databasesPanel.DeleteDatabase()
+	case "delete-dbuser":
+		return m, m.dbUsersPanel.DeleteUser()
+	case "activate-cert":
+		return m, m.sslPanel.ActivateCert()
+	case "delete-cert":
+		return m, m.sslPanel.DeleteCert()
+	case "create-worker":
+		return m, m.workersPanel.CreateWorker()
+	case "restart-worker":
+		return m, m.workersPanel.RestartWorker()
+	case "delete-worker":
+		return m, m.workersPanel.DeleteWorker()
+	case "restart-daemon":
+		return m, m.daemonsPanel.RestartDaemon()
+	case "delete-daemon":
+		return m, m.daemonsPanel.DeleteDaemon()
+	case "delete-firewall":
+		return m, m.firewallPanel.DeleteRule()
 	}
 
 	return m, nil
+}
+
+// truncateStr truncates a string for display in confirmation dialogs.
+func truncateStr(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
 
 // View renders the three-panel layout with a help bar at the bottom.
@@ -574,6 +1052,14 @@ func (m App) View() tea.View {
 
 	content := lipgloss.JoinVertical(lipgloss.Left, parts...)
 
+	// Overlay the input dialog if active.
+	if m.inputDialog != nil && m.inputDialog.Active {
+		overlay := m.inputDialog.View(m.width, m.height)
+		if overlay != "" {
+			content = overlay
+		}
+	}
+
 	// Overlay the confirmation dialog if active.
 	if m.confirm != nil && m.confirm.Active {
 		overlay := m.confirm.View(m.width, m.height)
@@ -614,6 +1100,22 @@ func (m App) renderDetailPanel(width, height int) string {
 			}
 		case 2:
 			sectionPanel = m.environmentPanel.View(width, sectionHeight, focused)
+		case 3:
+			if m.showDBUsers {
+				sectionPanel = m.dbUsersPanel.View(width, sectionHeight, focused)
+			} else {
+				sectionPanel = m.databasesPanel.View(width, sectionHeight, focused)
+			}
+		case 4:
+			sectionPanel = m.sslPanel.View(width, sectionHeight, focused)
+		case 5:
+			sectionPanel = m.workersPanel.View(width, sectionHeight, focused)
+		case 6:
+			sectionPanel = m.daemonsPanel.View(width, sectionHeight, focused)
+		case 7:
+			sectionPanel = m.firewallPanel.View(width, sectionHeight, focused)
+		case 8:
+			sectionPanel = m.jobsPanel.View(width, sectionHeight, focused)
 		default:
 			// For tabs not yet implemented, show the site info panel.
 			sectionPanel = m.siteInfo.View(width, sectionHeight, focused)
@@ -631,8 +1133,8 @@ func (m App) renderTabBar(width int) string {
 		name string
 	}{
 		{1, "Deploy"}, {2, "Env"}, {3, "DB"},
-		{4, "SSL"}, {5, "Workers"}, {6, "Cmds"},
-		{7, "Logs"}, {8, "Git"}, {9, "Domains"},
+		{4, "SSL"}, {5, "Workers"}, {6, "Daemons"},
+		{7, "Firewall"}, {8, "Jobs"}, {9, "Domains"},
 	}
 
 	var parts []string
@@ -665,6 +1167,20 @@ func (m App) renderHelpBar() string {
 			helpBindings = m.deploymentsPanel.HelpBindings()
 		} else if m.selectedSite != nil && m.activeTab == 2 {
 			helpBindings = m.environmentPanel.HelpBindings()
+		} else if m.activeTab == 3 && m.showDBUsers {
+			helpBindings = m.dbUsersPanel.HelpBindings()
+		} else if m.activeTab == 3 {
+			helpBindings = m.databasesPanel.HelpBindings()
+		} else if m.selectedSite != nil && m.activeTab == 4 {
+			helpBindings = m.sslPanel.HelpBindings()
+		} else if m.selectedSite != nil && m.activeTab == 5 {
+			helpBindings = m.workersPanel.HelpBindings()
+		} else if m.activeTab == 6 {
+			helpBindings = m.daemonsPanel.HelpBindings()
+		} else if m.activeTab == 7 {
+			helpBindings = m.firewallPanel.HelpBindings()
+		} else if m.activeTab == 8 {
+			helpBindings = m.jobsPanel.HelpBindings()
 		} else if m.selectedSite != nil {
 			helpBindings = m.siteInfo.HelpBindings()
 		} else {
@@ -705,9 +1221,9 @@ func (m App) tabName() string {
 		3: "Databases",
 		4: "SSL",
 		5: "Workers",
-		6: "Commands",
-		7: "Logs",
-		8: "Git",
+		6: "Daemons",
+		7: "Firewall",
+		8: "Jobs",
 		9: "Domains",
 	}
 	if name, ok := names[m.activeTab]; ok {
