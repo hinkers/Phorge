@@ -12,6 +12,7 @@ import (
 
 	"github.com/hinke/phorge/internal/config"
 	"github.com/hinke/phorge/internal/forge"
+	"github.com/hinke/phorge/internal/tui/components"
 	"github.com/hinke/phorge/internal/tui/panels"
 	"github.com/hinke/phorge/internal/tui/theme"
 )
@@ -37,10 +38,14 @@ type App struct {
 	width, height int
 
 	// Sub-model panels.
-	serverList panels.ServerList
-	siteList   panels.SiteList
-	serverInfo panels.ServerInfo
-	siteInfo   panels.SiteInfo
+	serverList       panels.ServerList
+	siteList         panels.SiteList
+	serverInfo       panels.ServerInfo
+	siteInfo         panels.SiteInfo
+	deploymentsPanel panels.DeploymentsPanel
+
+	// Confirmation dialog state.
+	confirm *components.Confirm
 
 	// Data kept at the app level for cross-panel concerns.
 	selectedSrv  *forge.Server
@@ -87,6 +92,15 @@ func (m App) Init() tea.Cmd {
 
 // Update handles all incoming messages.
 func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// If a confirmation dialog is active, route all key events to it.
+	if m.confirm != nil && m.confirm.Active {
+		if _, ok := msg.(tea.KeyPressMsg); ok {
+			c, cmd := m.confirm.Update(msg)
+			m.confirm = &c
+			return m, cmd
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -129,7 +143,61 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		site := msg.Site
 		m.selectedSite = &site
 		m.siteInfo = m.siteInfo.SetSite(&site)
+		// Re-initialise the deployments panel if the detail panel is showing deployments.
+		if m.activeTab == 1 && m.focus == FocusDetailPanel && m.selectedSrv != nil {
+			m.deploymentsPanel = panels.NewDeploymentsPanel(
+				m.forge, m.selectedSrv.ID, site.ID,
+			)
+			return m, m.deploymentsPanel.LoadDeployments()
+		}
 		return m, nil
+
+	// Deployment panel messages.
+	case panels.DeploymentsLoadedMsg:
+		p, cmd := m.deploymentsPanel.Update(msg)
+		m.deploymentsPanel = p.(panels.DeploymentsPanel)
+		return m, cmd
+
+	case panels.DeployOutputMsg:
+		p, cmd := m.deploymentsPanel.Update(msg)
+		m.deploymentsPanel = p.(panels.DeploymentsPanel)
+		return m, cmd
+
+	case panels.DeployResetMsg:
+		if msg.Err != nil {
+			m.toast = fmt.Sprintf("Reset failed: %v", msg.Err)
+			m.toastIsErr = true
+		} else {
+			m.toast = "Deployment status reset"
+			m.toastIsErr = false
+		}
+		// Refresh the deployments list after reset.
+		return m, tea.Batch(
+			m.clearToastAfter(3*time.Second),
+			m.deploymentsPanel.LoadDeployments(),
+		)
+
+	// Deploy triggered (from deployments panel commands).
+	case panels.DeployTriggerMsg:
+		m.toast = "Deployment started"
+		m.toastIsErr = false
+		cmds := []tea.Cmd{m.clearToastAfter(3 * time.Second)}
+		if m.activeTab == 1 {
+			cmds = append(cmds, m.deploymentsPanel.LoadDeployments())
+		}
+		return m, tea.Batch(cmds...)
+
+	// Panel-level errors (from panel API commands).
+	case panels.PanelErrMsg:
+		m.loading = false
+		m.toast = fmt.Sprintf("Error: %v", msg.Err)
+		m.toastIsErr = true
+		return m, m.clearToastAfter(5 * time.Second)
+
+	// Confirmation dialog result.
+	case components.ConfirmResult:
+		m.confirm = nil
+		return m.handleConfirmResult(msg)
 
 	case errMsg:
 		m.loading = false
@@ -165,7 +233,12 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toast = "Deployment started"
 			m.toastIsErr = false
 		}
-		return m, m.clearToastAfter(3 * time.Second)
+		// Refresh the deployments list after a successful deploy trigger.
+		cmds := []tea.Cmd{m.clearToastAfter(3 * time.Second)}
+		if msg.err == nil && m.activeTab == 1 {
+			cmds = append(cmds, m.deploymentsPanel.LoadDeployments())
+		}
+		return m, tea.Batch(cmds...)
 	}
 
 	return m, nil
@@ -229,6 +302,13 @@ func (m App) handleContextListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.navKeys.Enter):
 		m.focus = FocusDetailPanel
+		// Initialise the active tab panel when entering the detail panel.
+		if m.selectedSite != nil && m.selectedSrv != nil && m.activeTab == 1 {
+			m.deploymentsPanel = panels.NewDeploymentsPanel(
+				m.forge, m.selectedSrv.ID, m.selectedSite.ID,
+			)
+			return m, m.deploymentsPanel.LoadDeployments()
+		}
 		return m, nil
 	case key.Matches(msg, m.navKeys.Back):
 		m.focus = FocusServerList
@@ -244,6 +324,16 @@ func (m App) handleContextListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // handleDetailKey processes keys when the detail panel is focused.
 func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// If the deployments panel is showing output and user presses Esc,
+	// go back to the deployments list (not up to context panel).
+	if m.activeTab == 1 && m.selectedSite != nil && m.deploymentsPanel.ShowingOutput() {
+		if key.Matches(msg, m.navKeys.Back) {
+			p, cmd := m.deploymentsPanel.Update(msg)
+			m.deploymentsPanel = p.(panels.DeploymentsPanel)
+			return m, cmd
+		}
+	}
+
 	switch {
 	case key.Matches(msg, m.navKeys.Back):
 		m.focus = FocusContextList
@@ -251,23 +341,86 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	// Section tab switching (1-9).
 	case key.Matches(msg, m.sectionKeys.Deployments):
-		m.activeTab = 1
+		return m.switchToTab(1)
 	case key.Matches(msg, m.sectionKeys.Environment):
-		m.activeTab = 2
+		return m.switchToTab(2)
 	case key.Matches(msg, m.sectionKeys.Databases):
-		m.activeTab = 3
+		return m.switchToTab(3)
 	case key.Matches(msg, m.sectionKeys.SSL):
-		m.activeTab = 4
+		return m.switchToTab(4)
 	case key.Matches(msg, m.sectionKeys.Workers):
-		m.activeTab = 5
+		return m.switchToTab(5)
 	case key.Matches(msg, m.sectionKeys.Commands):
-		m.activeTab = 6
+		return m.switchToTab(6)
 	case key.Matches(msg, m.sectionKeys.Logs):
-		m.activeTab = 7
+		return m.switchToTab(7)
 	case key.Matches(msg, m.sectionKeys.Git):
-		m.activeTab = 8
+		return m.switchToTab(8)
 	case key.Matches(msg, m.sectionKeys.Domains):
-		m.activeTab = 9
+		return m.switchToTab(9)
+	}
+
+	// If the deployments panel is active, handle deployment-specific keys.
+	if m.activeTab == 1 && m.selectedSite != nil {
+		return m.handleDeploymentsKey(msg)
+	}
+
+	return m, nil
+}
+
+// switchToTab changes the active detail tab and initialises the panel if needed.
+func (m App) switchToTab(tab int) (tea.Model, tea.Cmd) {
+	m.activeTab = tab
+
+	// Initialise the deployments panel when switching to tab 1.
+	if tab == 1 && m.selectedSite != nil && m.selectedSrv != nil {
+		m.deploymentsPanel = panels.NewDeploymentsPanel(
+			m.forge, m.selectedSrv.ID, m.selectedSite.ID,
+		)
+		return m, m.deploymentsPanel.LoadDeployments()
+	}
+
+	return m, nil
+}
+
+// handleDeploymentsKey handles keys specific to the deployments panel tab.
+func (m App) handleDeploymentsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// Check for action keys before delegating to the panel.
+	switch {
+	case key.Matches(msg, m.siteActKeys.Deploy):
+		c := components.NewConfirm("deploy", "Deploy site now?")
+		m.confirm = &c
+		return m, nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
+		c := components.NewConfirm("reset-deploy", "Reset deployment status?")
+		m.confirm = &c
+		return m, nil
+	}
+
+	// Delegate navigation and other keys to the deployments panel.
+	p, cmd := m.deploymentsPanel.Update(msg)
+	m.deploymentsPanel = p.(panels.DeploymentsPanel)
+	return m, cmd
+}
+
+// handleConfirmResult processes the result of a confirmation dialog.
+func (m App) handleConfirmResult(msg components.ConfirmResult) (tea.Model, tea.Cmd) {
+	if !msg.Confirmed {
+		return m, nil
+	}
+
+	switch msg.ID {
+	case "deploy":
+		if m.selectedSite != nil && m.selectedSrv != nil {
+			m.toast = "Deploying..."
+			m.toastIsErr = false
+			return m, m.deploymentsPanel.TriggerDeploy()
+		}
+	case "reset-deploy":
+		if m.selectedSite != nil && m.selectedSrv != nil {
+			return m, m.deploymentsPanel.ResetDeployStatus()
+		}
 	}
 
 	return m, nil
@@ -319,18 +472,47 @@ func (m App) View() tea.View {
 	parts = append(parts, helpBar)
 
 	content := lipgloss.JoinVertical(lipgloss.Left, parts...)
+
+	// Overlay the confirmation dialog if active.
+	if m.confirm != nil && m.confirm.Active {
+		overlay := m.confirm.View(m.width, m.height)
+		if overlay != "" {
+			content = overlay
+		}
+	}
+
 	v := tea.NewView(content)
 	v.AltScreen = true
 	return v
 }
 
 // renderDetailPanel renders the bottom-right detail/preview panel.
-// It delegates to SiteInfo when a site is selected, otherwise ServerInfo.
+// When a site is selected it shows a tab bar above the active section panel;
+// otherwise it falls back to server or site info.
 func (m App) renderDetailPanel(width, height int) string {
 	focused := m.focus == FocusDetailPanel
 
 	if m.selectedSite != nil {
-		return m.siteInfo.View(width, height, focused)
+		// Render the tab bar as a single line above the section panel.
+		tabBar := m.renderTabBar(width)
+		tabBarHeight := lipgloss.Height(tabBar)
+
+		// The section panel gets the remaining height below the tab bar.
+		sectionHeight := height - tabBarHeight
+		if sectionHeight < 2 {
+			sectionHeight = 2
+		}
+
+		var sectionPanel string
+		switch m.activeTab {
+		case 1:
+			sectionPanel = m.deploymentsPanel.View(width, sectionHeight, focused)
+		default:
+			// For tabs not yet implemented, show the site info panel.
+			sectionPanel = m.siteInfo.View(width, sectionHeight, focused)
+		}
+
+		return lipgloss.JoinVertical(lipgloss.Left, tabBar, sectionPanel)
 	}
 	return m.serverInfo.View(width, height, focused)
 }
@@ -370,7 +552,9 @@ func (m App) renderHelpBar() string {
 	case FocusContextList:
 		helpBindings = m.siteList.HelpBindings()
 	case FocusDetailPanel:
-		if m.selectedSite != nil {
+		if m.selectedSite != nil && m.activeTab == 1 {
+			helpBindings = m.deploymentsPanel.HelpBindings()
+		} else if m.selectedSite != nil {
 			helpBindings = m.siteInfo.HelpBindings()
 		} else {
 			helpBindings = m.serverInfo.HelpBindings()
