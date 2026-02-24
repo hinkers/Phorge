@@ -11,7 +11,6 @@ var (
 	colorSubtle    = lipgloss.Color("#565f89") // grey
 	colorHighlight = lipgloss.Color("#e0af68") // amber
 	colorError     = lipgloss.Color("#f7768e") // red
-	colorBg        = lipgloss.Color("#1a1b26") // dark bg
 	colorFg        = lipgloss.Color("#c0caf5") // light fg
 	colorMuted     = lipgloss.Color("#545c7e") // muted fg
 )

@@ -101,7 +101,7 @@ func DefaultNavKeyMap() NavKeyMap {
 			key.WithHelp("pgup", "page up"),
 		),
 		PageDown: key.NewBinding(
-			key.WithKeys("pgdown", "ctrl+d"),
+			key.WithKeys("pgdown", "ctrl+e"),
 			key.WithHelp("pgdn", "page down"),
 		),
 	}
