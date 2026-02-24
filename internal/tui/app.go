@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -85,6 +86,10 @@ type App struct {
 	toast      string
 	toastIsErr bool
 	loading    bool
+
+	// tunnelProc holds the SSH tunnel process for database connections.
+	// It is killed when the external database client exits.
+	tunnelProc *os.Process
 
 	// Keymaps
 	globalKeys    GlobalKeyMap
@@ -543,6 +548,23 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.deploymentsPanel.LoadDeployments())
 		}
 		return m, tea.Batch(cmds...)
+
+	case externalExitMsg:
+		// Clean up any lingering tunnel process.
+		m.cleanupTunnel()
+		if msg.err != nil {
+			m.toast = fmt.Sprintf("External process error: %v", msg.err)
+			m.toastIsErr = true
+			return m, m.clearToastAfter(5 * time.Second)
+		}
+		return m, nil
+
+	case dbReadyMsg:
+		m.toast = ""
+		m.toastIsErr = false
+		var cmd tea.Cmd
+		m, cmd = m.handleDBReady(msg)
+		return m, cmd
 	}
 
 	return m, nil
@@ -564,6 +586,32 @@ func (m App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.serverList = m.serverList.SetLoading(true)
 		return m, m.fetchServers()
+	case key.Matches(msg, m.globalKeys.SSH):
+		cmd := m.sshCmd()
+		if cmd == nil {
+			m.toast = "No server selected"
+			m.toastIsErr = true
+			return m, m.clearToastAfter(3 * time.Second)
+		}
+		return m, cmd
+	case key.Matches(msg, m.globalKeys.SFTP):
+		cmd := m.sftpCmd()
+		if cmd == nil {
+			m.toast = "No server selected"
+			m.toastIsErr = true
+			return m, m.clearToastAfter(3 * time.Second)
+		}
+		return m, cmd
+	case key.Matches(msg, m.globalKeys.Database):
+		cmd := m.databaseCmd()
+		if cmd == nil {
+			m.toast = "Select a server and site first"
+			m.toastIsErr = true
+			return m, m.clearToastAfter(3 * time.Second)
+		}
+		m.toast = "Fetching database credentials..."
+		m.toastIsErr = false
+		return m, cmd
 	}
 
 	// Panel-specific keys.
