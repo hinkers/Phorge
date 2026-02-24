@@ -1,46 +1,72 @@
 # Phorge
 
-A terminal UI for managing [Laravel Forge](https://forge.laravel.com) servers, sites, and resources — built with [Textual](https://github.com/Textualize/textual).
+A keyboard-first terminal UI for managing [Laravel Forge](https://forge.laravel.com) servers, sites, and resources — inspired by [lazygit](https://github.com/jesseduffield/lazygit).
 
 Browse servers, trigger deployments, edit environment files, manage databases, SSH into machines, and more — all without leaving your terminal.
 
 ## Features
 
+- **Keyboard-first UX** — lazygit-style three-panel layout with `j/k` navigation, single-key actions, and context-sensitive help
 - **Server management** — View server info, SSH keys, daemons, firewall rules, scheduled jobs
-- **Site management** — Deployments, deployment scripts, environment files, workers, backups, domains, SSL certificates, commands, git repository info
-- **Database management** — Databases and database users per server
-- **Tree navigation** — Two-pane layout with a collapsible tree on the left and detail panels on the right
-- **Lazy loading** — Sites are fetched on-demand when you expand a server node
-- **SSH integration** — SSH directly into any server or site with one keystroke
+- **Site management** — Deployments, deploy scripts, environment files, workers, domains, SSL certificates, commands, git info
+- **Database management** — Databases and database users with create/delete
+- **SSH integration** — SSH into any server or site with `Ctrl+S`
+- **SFTP integration** — Browse files via [termscp](https://github.com/veeso/termscp) with `Ctrl+F`
+- **Database tunnel** — Open remote databases in [lazysql](https://github.com/jorgerojas26/lazysql) with `Ctrl+D`
 - **Environment editor** — Opens `.env` in your preferred editor, detects changes, and uploads automatically
-- **Command palette** — Fuzzy search across all servers and actions (`Ctrl+P`)
-- **Vim keybindings** — Optional vim-style navigation (`h/j/k/l`) in the tree
-- **Configurable** — API key, editor command, and UI preferences stored in `~/.config/phorge/config.toml`
+- **Search/filter** — Press `/` to filter server and site lists in real-time
+- **Single binary** — No runtime dependencies, cross-compiled for Linux, macOS, and Windows
 
 ## Keyboard Shortcuts
 
+### Navigation
+
 | Key | Action |
 |---|---|
-| `Ctrl+Q` | Quit |
-| `Ctrl+P` | Command palette |
-| `Ctrl+S` | SSH to selected server |
-| `Ctrl+R` | Refresh current view |
-| `Ctrl+E` | Edit configuration |
+| `j` / `k` | Move up / down |
+| `g` / `G` | Jump to top / bottom |
+| `Tab` / `Shift+Tab` | Cycle panel focus |
+| `Enter` | Select / drill in |
+| `Esc` | Go back |
+| `/` | Search / filter |
+| `1`–`9` | Switch section tab |
+| `?` | Help |
+| `q` | Quit |
+
+### Actions
+
+| Key | Action |
+|---|---|
+| `Ctrl+S` | SSH to server |
+| `Ctrl+F` | SFTP via termscp |
+| `Ctrl+D` | Database via lazysql |
+| `Ctrl+R` | Refresh |
+| `d` | Deploy site |
+| `e` | Edit env / deploy script |
+| `c` | Create resource |
+| `x` | Delete resource |
+| `r` | Restart (workers, daemons) |
+| `S` | View deploy script |
 
 ## Installation
 
-Requires Python 3.11+.
+### From source (requires Go 1.22+)
 
 ```bash
-# With pipx (recommended)
-pipx install .
-
-# With pip
-pip install .
-
-# For development
-poetry install
+go install github.com/hinke/phorge/cmd/phorge@latest
 ```
+
+### Build from repo
+
+```bash
+git clone https://github.com/hinke/phorge.git
+cd phorge
+make build
+```
+
+### From releases
+
+Download the latest binary for your platform from [GitHub Releases](https://github.com/hinke/phorge/releases).
 
 ## Usage
 
@@ -50,6 +76,10 @@ phorge
 
 On first launch you'll be prompted for your [Forge API token](https://forge.laravel.com/user-profile/api). The token is saved to `~/.config/phorge/config.toml`.
 
+```bash
+phorge --version
+```
+
 ## Configuration
 
 Config is stored at `~/.config/phorge/config.toml`:
@@ -57,33 +87,41 @@ Config is stored at `~/.config/phorge/config.toml`:
 ```toml
 [forge]
 api_key = "your-forge-api-token"
+ssh_user = "forge"
 
 [editor]
-command = "code"  # or "nvim", "vim", "nano", etc.
+command = "vim"
 
-[ui]
-vim_keys = false
+[server_users]
+"production-1" = "deployer"
 ```
+
+| Key | Description | Default |
+|---|---|---|
+| `forge.api_key` | Forge API token | (required) |
+| `forge.ssh_user` | Default SSH username | `forge` |
+| `editor.command` | External editor for env/script editing | `vim` |
+| `server_users.<name>` | Per-server SSH user override | — |
 
 ## Development
 
 ```bash
-# Install dev dependencies
-poetry install
-
 # Run tests
-pytest
+make test
 
-# Run with textual dev console
-textual run --dev -c phorge
+# Build
+make build
+
+# Lint
+make vet
 ```
 
 ## Tech Stack
 
-- [Textual](https://github.com/Textualize/textual) — TUI framework
-- [httpx](https://github.com/encode/httpx) — Async HTTP client
-- [Pydantic](https://docs.pydantic.dev) — API response validation
-- [Poetry](https://python-poetry.org) — Dependency management
+- [Bubbletea](https://github.com/charmbracelet/bubbletea) — TUI framework (Elm Architecture)
+- [Bubbles](https://github.com/charmbracelet/bubbles) — TUI components
+- [Lip Gloss](https://github.com/charmbracelet/lipgloss) — Terminal styling
+- Go standard library `net/http` — Forge API client
 
 ## License
 
