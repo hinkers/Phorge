@@ -12,6 +12,8 @@ import (
 
 	"github.com/hinke/phorge/internal/config"
 	"github.com/hinke/phorge/internal/forge"
+	"github.com/hinke/phorge/internal/tui/panels"
+	"github.com/hinke/phorge/internal/tui/theme"
 )
 
 // Focus tracks which panel has keyboard focus.
@@ -34,16 +36,14 @@ type App struct {
 	focus         Focus
 	width, height int
 
-	// Data
-	servers      []forge.Server
+	// Sub-model panels.
+	serverList panels.ServerList
+	siteList   panels.SiteList
+
+	// Data kept at the app level for cross-panel concerns.
 	selectedSrv  *forge.Server
-	sites        []forge.Site
 	selectedSite *forge.Site
 	activeTab    int // 1-9 for detail section tabs
-
-	// Cursors
-	serverCursor int
-	siteCursor   int
 
 	// UI state
 	toast      string
@@ -51,11 +51,11 @@ type App struct {
 	loading    bool
 
 	// Keymaps
-	globalKeys     GlobalKeyMap
-	navKeys        NavKeyMap
-	sectionKeys    SectionKeyMap
-	serverActKeys  ServerActionKeyMap
-	siteActKeys    SiteActionKeyMap
+	globalKeys    GlobalKeyMap
+	navKeys       NavKeyMap
+	sectionKeys   SectionKeyMap
+	serverActKeys ServerActionKeyMap
+	siteActKeys   SiteActionKeyMap
 }
 
 // NewApp creates a new App model with the given configuration.
@@ -66,6 +66,8 @@ func NewApp(cfg *config.Config) App {
 		config:        cfg,
 		focus:         FocusServerList,
 		activeTab:     1,
+		serverList:    panels.NewServerList(),
+		siteList:      panels.NewSiteList(),
 		globalKeys:    DefaultGlobalKeyMap(),
 		navKeys:       DefaultNavKeyMap(),
 		sectionKeys:   DefaultSectionKeyMap(),
@@ -91,25 +93,32 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKey(msg)
 
 	case serversLoadedMsg:
-		m.servers = msg.servers
 		m.loading = false
-		m.serverCursor = 0
-		if len(m.servers) > 0 {
-			srv := m.servers[0]
-			m.selectedSrv = &srv
-			return m, m.fetchSites(srv.ID)
+		m.serverList = m.serverList.SetServers(msg.servers).SetLoading(false)
+		sel := m.serverList.Selected()
+		m.selectedSrv = sel
+		if sel != nil {
+			m.siteList = m.siteList.SetServerName(sel.Name)
+			return m, m.fetchSites(sel.ID)
 		}
 		return m, nil
 
 	case sitesLoadedMsg:
-		m.sites = msg.sites
-		m.siteCursor = 0
-		if len(m.sites) > 0 {
-			site := m.sites[0]
-			m.selectedSite = &site
-		} else {
-			m.selectedSite = nil
-		}
+		m.siteList = m.siteList.SetSites(msg.sites)
+		m.selectedSite = m.siteList.Selected()
+		return m, nil
+
+	// Panel-emitted messages: a server was navigated to.
+	case panels.ServerSelectedMsg:
+		srv := msg.Server
+		m.selectedSrv = &srv
+		m.siteList = m.siteList.SetServerName(srv.Name)
+		return m, m.fetchSites(srv.ID)
+
+	// Panel-emitted messages: a site was navigated to.
+	case panels.SiteSelectedMsg:
+		site := msg.Site
+		m.selectedSite = &site
 		return m, nil
 
 	case errMsg:
@@ -166,6 +175,7 @@ func (m App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case key.Matches(msg, m.globalKeys.Refresh):
 		m.loading = true
+		m.serverList = m.serverList.SetLoading(true)
 		return m, m.fetchServers()
 	}
 
@@ -184,83 +194,42 @@ func (m App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // handleServerListKey processes keys when the server list panel is focused.
 func (m App) handleServerListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// Check for server-specific action keys first (reboot, etc.).
 	switch {
-	case key.Matches(msg, m.navKeys.Down):
-		if len(m.servers) > 0 {
-			m.serverCursor = min(m.serverCursor+1, len(m.servers)-1)
-			srv := m.servers[m.serverCursor]
-			m.selectedSrv = &srv
-			return m, m.fetchSites(srv.ID)
-		}
-	case key.Matches(msg, m.navKeys.Up):
-		if len(m.servers) > 0 {
-			m.serverCursor = max(m.serverCursor-1, 0)
-			srv := m.servers[m.serverCursor]
-			m.selectedSrv = &srv
-			return m, m.fetchSites(srv.ID)
-		}
 	case key.Matches(msg, m.navKeys.Enter):
 		m.focus = FocusContextList
 		return m, nil
-	case key.Matches(msg, m.navKeys.Home):
-		if len(m.servers) > 0 {
-			m.serverCursor = 0
-			srv := m.servers[0]
-			m.selectedSrv = &srv
-			return m, m.fetchSites(srv.ID)
-		}
-	case key.Matches(msg, m.navKeys.End):
-		if len(m.servers) > 0 {
-			m.serverCursor = len(m.servers) - 1
-			srv := m.servers[m.serverCursor]
-			m.selectedSrv = &srv
-			return m, m.fetchSites(srv.ID)
-		}
 	case key.Matches(msg, m.serverActKeys.Reboot):
 		if m.selectedSrv != nil {
 			return m, m.rebootServer(m.selectedSrv.ID)
 		}
+		return m, nil
 	}
 
-	return m, nil
+	// Delegate navigation keys to the server list panel.
+	var cmd tea.Cmd
+	panel, cmd := m.serverList.Update(msg)
+	m.serverList = panel.(panels.ServerList)
+	return m, cmd
 }
 
 // handleContextListKey processes keys when the context (sites) list is focused.
 func (m App) handleContextListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// Handle app-level keys (focus changes).
 	switch {
-	case key.Matches(msg, m.navKeys.Down):
-		if len(m.sites) > 0 {
-			m.siteCursor = min(m.siteCursor+1, len(m.sites)-1)
-			site := m.sites[m.siteCursor]
-			m.selectedSite = &site
-		}
-	case key.Matches(msg, m.navKeys.Up):
-		if len(m.sites) > 0 {
-			m.siteCursor = max(m.siteCursor-1, 0)
-			site := m.sites[m.siteCursor]
-			m.selectedSite = &site
-		}
 	case key.Matches(msg, m.navKeys.Enter):
 		m.focus = FocusDetailPanel
 		return m, nil
 	case key.Matches(msg, m.navKeys.Back):
 		m.focus = FocusServerList
 		return m, nil
-	case key.Matches(msg, m.navKeys.Home):
-		if len(m.sites) > 0 {
-			m.siteCursor = 0
-			site := m.sites[0]
-			m.selectedSite = &site
-		}
-	case key.Matches(msg, m.navKeys.End):
-		if len(m.sites) > 0 {
-			m.siteCursor = len(m.sites) - 1
-			site := m.sites[m.siteCursor]
-			m.selectedSite = &site
-		}
 	}
 
-	return m, nil
+	// Delegate navigation keys to the site list panel.
+	var cmd tea.Cmd
+	panel, cmd := m.siteList.Update(msg)
+	m.siteList = panel.(panels.SiteList)
+	return m, cmd
 }
 
 // handleDetailKey processes keys when the detail panel is focused.
@@ -317,9 +286,9 @@ func (m App) View() tea.View {
 	}
 	rightWidth := m.width - leftWidth
 
-	// Build the three panels.
-	serverPanel := m.renderServerList(leftWidth, contentHeight)
-	contextPanel := m.renderContextList(rightWidth, contentHeight/2)
+	// Build the three panels using sub-models.
+	serverPanel := m.serverList.View(leftWidth, contentHeight, m.focus == FocusServerList)
+	contextPanel := m.siteList.View(rightWidth, contentHeight/2, m.focus == FocusContextList)
 	detailPanel := m.renderDetailPanel(rightWidth, contentHeight-contentHeight/2)
 
 	// Join the right panels vertically.
@@ -343,126 +312,6 @@ func (m App) View() tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
 	return v
-}
-
-// renderServerList renders the left-side server list panel.
-func (m App) renderServerList(width, height int) string {
-	style := InactiveBorderStyle
-	titleColor := colorSubtle
-	if m.focus == FocusServerList {
-		style = ActiveBorderStyle
-		titleColor = colorPrimary
-	}
-
-	title := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(titleColor).
-		Render(" Servers ")
-
-	// Account for border size.
-	innerWidth := width - 2
-	innerHeight := height - 2
-	if innerWidth < 0 {
-		innerWidth = 0
-	}
-	if innerHeight < 0 {
-		innerHeight = 0
-	}
-
-	var lines []string
-
-	if m.loading && len(m.servers) == 0 {
-		lines = append(lines, LoadingStyle.Render("Loading servers..."))
-	} else if len(m.servers) == 0 {
-		lines = append(lines, NormalItemStyle.Render("No servers found"))
-	} else {
-		for i, srv := range m.servers {
-			name := truncate(srv.Name, innerWidth-4)
-			if i == m.serverCursor {
-				line := CursorStyle.Render("> ") + SelectedItemStyle.Render(name)
-				lines = append(lines, line)
-			} else {
-				line := "  " + NormalItemStyle.Render(name)
-				lines = append(lines, line)
-			}
-			if i >= innerHeight-1 {
-				break
-			}
-		}
-	}
-
-	// Pad to fill the panel height.
-	for len(lines) < innerHeight {
-		lines = append(lines, "")
-	}
-
-	content := strings.Join(lines, "\n")
-
-	return style.
-		Width(innerWidth).
-		Height(innerHeight).
-		Render(title + "\n" + content)
-}
-
-// renderContextList renders the top-right sites/context list panel.
-func (m App) renderContextList(width, height int) string {
-	style := InactiveBorderStyle
-	titleColor := colorSubtle
-	if m.focus == FocusContextList {
-		style = ActiveBorderStyle
-		titleColor = colorPrimary
-	}
-
-	panelTitle := "Sites"
-	if m.selectedSrv != nil {
-		panelTitle = fmt.Sprintf("Sites (%s)", m.selectedSrv.Name)
-	}
-	title := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(titleColor).
-		Render(" " + panelTitle + " ")
-
-	innerWidth := width - 2
-	innerHeight := height - 2
-	if innerWidth < 0 {
-		innerWidth = 0
-	}
-	if innerHeight < 0 {
-		innerHeight = 0
-	}
-
-	var lines []string
-
-	if m.selectedSrv == nil {
-		lines = append(lines, NormalItemStyle.Render("Select a server"))
-	} else if len(m.sites) == 0 {
-		lines = append(lines, NormalItemStyle.Render("No sites found"))
-	} else {
-		for i, site := range m.sites {
-			name := truncate(site.Name, innerWidth-4)
-			if i == m.siteCursor {
-				line := CursorStyle.Render("> ") + SelectedItemStyle.Render(name)
-				lines = append(lines, line)
-			} else {
-				line := "  " + NormalItemStyle.Render(name)
-				lines = append(lines, line)
-			}
-			if i >= innerHeight-1 {
-				break
-			}
-		}
-	}
-
-	for len(lines) < innerHeight {
-		lines = append(lines, "")
-	}
-
-	content := strings.Join(lines, "\n")
-
-	return style.
-		Width(innerWidth).
-		Height(innerHeight).
-		Render(title + "\n" + content)
 }
 
 // renderDetailPanel renders the bottom-right detail/preview panel.
@@ -551,42 +400,33 @@ func (m App) renderTabBar(width int) string {
 	}
 
 	bar := strings.Join(parts, "  ")
-	return truncate(bar, width)
+	return theme.Truncate(bar, width)
 }
 
 // renderHelpBar renders the context-sensitive help bar at the bottom.
 func (m App) renderHelpBar() string {
-	var bindings []string
+	var helpBindings []panels.HelpBinding
 
 	switch m.focus {
 	case FocusServerList:
-		bindings = []string{
-			helpBinding("j/k", "navigate"),
-			helpBinding("enter", "select"),
-			helpBinding("r", "reboot"),
-			helpBinding("tab", "switch panel"),
-			helpBinding("ctrl+r", "refresh"),
-			helpBinding("?", "help"),
-			helpBinding("q", "quit"),
-		}
+		helpBindings = m.serverList.HelpBindings()
 	case FocusContextList:
-		bindings = []string{
-			helpBinding("j/k", "navigate"),
-			helpBinding("enter", "select"),
-			helpBinding("esc", "back"),
-			helpBinding("tab", "switch panel"),
-			helpBinding("q", "quit"),
-		}
+		helpBindings = m.siteList.HelpBindings()
 	case FocusDetailPanel:
-		bindings = []string{
-			helpBinding("1-9", "sections"),
-			helpBinding("esc", "back"),
-			helpBinding("tab", "switch panel"),
-			helpBinding("q", "quit"),
+		helpBindings = []panels.HelpBinding{
+			{Key: "1-9", Desc: "sections"},
+			{Key: "esc", Desc: "back"},
+			{Key: "tab", Desc: "switch panel"},
+			{Key: "q", Desc: "quit"},
 		}
 	}
 
-	bar := strings.Join(bindings, "  ")
+	var formatted []string
+	for _, b := range helpBindings {
+		formatted = append(formatted, helpBinding(b.Key, b.Desc))
+	}
+
+	bar := strings.Join(formatted, "  ")
 
 	// Pad to full width.
 	barWidth := lipgloss.Width(bar)
@@ -682,27 +522,5 @@ func renderKV(label, value string, maxWidth int) string {
 	l := LabelStyle.Render(label + ":")
 	v := ValueStyle.Render(value)
 	line := l + " " + v
-	return truncate(line, maxWidth)
-}
-
-// truncate shortens a string to fit within the given width, accounting for
-// ANSI escape sequences by using lipgloss.Width for measurement.
-func truncate(s string, maxWidth int) string {
-	if maxWidth <= 0 {
-		return ""
-	}
-	w := lipgloss.Width(s)
-	if w <= maxWidth {
-		return s
-	}
-	// Brute-force truncation: trim runes until we fit.
-	runes := []rune(s)
-	for len(runes) > 0 {
-		runes = runes[:len(runes)-1]
-		candidate := string(runes) + "..."
-		if lipgloss.Width(candidate) <= maxWidth {
-			return candidate
-		}
-	}
-	return ""
+	return theme.Truncate(line, maxWidth)
 }
