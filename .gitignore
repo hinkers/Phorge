@@ -17,3 +17,10 @@ htmlcov/
 .coverage
 .claude/
 .worktrees/
+
+# Go
+/phorge
+/phorge.exe
+*.test
+*.out
+/dist/
