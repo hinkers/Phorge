@@ -5,35 +5,26 @@ import (
 	"os"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/hinke/phorge/internal/config"
+	"github.com/hinke/phorge/internal/tui"
 )
 
 func main() {
-	p := tea.NewProgram(initialModel())
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	if cfg.Forge.APIKey == "" {
+		fmt.Fprintln(os.Stderr, "No API key configured. Set it in ~/.config/phorge/config.toml")
+		os.Exit(1)
+	}
+
+	p := tea.NewProgram(tui.NewApp(cfg))
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-}
-
-// Placeholder model - will be replaced by tui.App in Task 5
-type model struct{}
-
-func initialModel() model { return model{} }
-
-func (m model) Init() tea.Cmd { return nil }
-
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
-		if msg.String() == "q" {
-			return m, tea.Quit
-		}
-	}
-	return m, nil
-}
-
-func (m model) View() tea.View {
-	v := tea.NewView("Phorge - press q to quit")
-	v.AltScreen = true
-	return v
 }
