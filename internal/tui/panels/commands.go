@@ -228,9 +228,9 @@ func (p CommandsPanel) View(width, height int, focused bool) string {
 
 	var content string
 	if p.showDetail && p.detailCommand != nil {
-		content = p.renderDetail(innerWidth, innerHeight)
+		content = p.renderDetail(innerWidth, innerHeight-1)
 	} else {
-		content = p.renderList(innerWidth, innerHeight)
+		content = p.renderList(innerWidth, innerHeight-1)
 	}
 
 	return style.

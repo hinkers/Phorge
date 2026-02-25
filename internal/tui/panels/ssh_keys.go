@@ -200,7 +200,7 @@ func (p SSHKeysPanel) View(width, height int, focused bool) string {
 		Foreground(titleColor).
 		Render(" SSH Keys ")
 
-	content := p.renderList(innerWidth, innerHeight)
+	content := p.renderList(innerWidth, innerHeight-1)
 
 	return style.
 		Width(innerWidth).

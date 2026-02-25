@@ -1,8 +1,6 @@
 package components
 
 import (
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
 	"charm.land/bubbles/v2/key"
 	lipgloss "charm.land/lipgloss/v2"
@@ -78,18 +76,5 @@ func (c Confirm) View(width, height int) string {
 
 	box := dialogBox.Width(boxWidth).Render(inner)
 
-	// Center the box on the screen.
-	boxH := lipgloss.Height(box)
-	topPad := (height - boxH) / 2
-	if topPad < 0 {
-		topPad = 0
-	}
-
-	leftPad := (width - lipgloss.Width(box)) / 2
-	if leftPad < 0 {
-		leftPad = 0
-	}
-
-	padded := strings.Repeat("\n", topPad) + strings.Repeat(" ", leftPad) + box
-	return padded
+	return box
 }

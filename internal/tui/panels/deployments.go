@@ -31,6 +31,14 @@ type DeployResetMsg struct {
 	Err error
 }
 
+// DeployViewOutputMsg is emitted when the user presses Enter on a deployment
+// to view its output. The app routes this to the output panel.
+type DeployViewOutputMsg struct {
+	ServerID     int64
+	SiteID       int64
+	DeploymentID int64
+}
+
 // DeploymentsPanel shows the deployment history for a site and allows
 // triggering deploys, viewing output, and resetting deployment status.
 type DeploymentsPanel struct {
@@ -41,11 +49,6 @@ type DeploymentsPanel struct {
 	deployments []forge.Deployment
 	cursor      int
 	loading     bool
-
-	// Output view state.
-	outputView   string
-	showOutput   bool
-	outputScroll int // line offset for scrolling output
 
 	// Keybindings
 	up     key.Binding
@@ -173,17 +176,7 @@ func (p DeploymentsPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 		p.cursor = 0
 		return p, nil
 
-	case DeployOutputMsg:
-		p.outputView = msg.Output
-		p.showOutput = true
-		p.outputScroll = 0
-		p.loading = false
-		return p, nil
-
 	case tea.KeyPressMsg:
-		if p.showOutput {
-			return p.handleOutputKey(msg)
-		}
 		return p.handleListKey(msg)
 	}
 
@@ -218,8 +211,16 @@ func (p DeploymentsPanel) handleListKey(msg tea.KeyPressMsg) (Panel, tea.Cmd) {
 	case key.Matches(msg, p.enter):
 		if len(p.deployments) > 0 {
 			dep := p.deployments[p.cursor]
-			p.loading = true
-			return p, p.LoadOutput(dep.ID)
+			serverID := p.serverID
+			siteID := p.siteID
+			deployID := dep.ID
+			return p, func() tea.Msg {
+				return DeployViewOutputMsg{
+					ServerID:     serverID,
+					SiteID:       siteID,
+					DeploymentID: deployID,
+				}
+			}
 		}
 		return p, nil
 
@@ -228,38 +229,6 @@ func (p DeploymentsPanel) handleListKey(msg tea.KeyPressMsg) (Panel, tea.Cmd) {
 	}
 
 	return p, nil
-}
-
-// handleOutputKey processes key events when viewing deployment output.
-func (p DeploymentsPanel) handleOutputKey(msg tea.KeyPressMsg) (Panel, tea.Cmd) {
-	switch {
-	case key.Matches(msg, p.back):
-		p.showOutput = false
-		p.outputView = ""
-		p.outputScroll = 0
-		return p, nil
-
-	case key.Matches(msg, p.down):
-		p.outputScroll++
-		return p, nil
-
-	case key.Matches(msg, p.up):
-		if p.outputScroll > 0 {
-			p.outputScroll--
-		}
-		return p, nil
-
-	case key.Matches(msg, p.home):
-		p.outputScroll = 0
-		return p, nil
-	}
-
-	return p, nil
-}
-
-// ShowingOutput reports whether the panel is currently showing deployment output.
-func (p DeploymentsPanel) ShowingOutput() bool {
-	return p.showOutput
 }
 
 // View renders the deployments panel.
@@ -280,22 +249,11 @@ func (p DeploymentsPanel) View(width, height int, focused bool) string {
 		innerHeight = 0
 	}
 
-	var title string
-	var content string
-
-	if p.showOutput {
-		title = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(titleColor).
-			Render(" Deploy Output ")
-		content = p.renderOutput(innerWidth, innerHeight)
-	} else {
-		title = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(titleColor).
-			Render(" Deployments ")
-		content = p.renderList(innerWidth, innerHeight)
-	}
+	title := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(titleColor).
+		Render(" Deployments ")
+	content := p.renderList(innerWidth, innerHeight-1)
 
 	return style.
 		Width(innerWidth).
@@ -398,53 +356,8 @@ func (p DeploymentsPanel) renderDeploymentLine(dep forge.Deployment, idx, maxWid
 	return theme.Truncate(line, maxWidth)
 }
 
-// renderOutput renders the deployment output with scrolling.
-func (p DeploymentsPanel) renderOutput(width, height int) string {
-	if p.loading {
-		return theme.LoadingStyle.Render("Loading output...")
-	}
-
-	if p.outputView == "" {
-		return theme.NormalItemStyle.Render("No output available")
-	}
-
-	allLines := strings.Split(p.outputView, "\n")
-
-	// Clamp scroll offset.
-	maxScroll := len(allLines) - height
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
-	scroll := p.outputScroll
-	if scroll > maxScroll {
-		scroll = maxScroll
-	}
-
-	var lines []string
-	for i := scroll; i < len(allLines) && len(lines) < height; i++ {
-		line := theme.Truncate(allLines[i], width)
-		lines = append(lines, theme.NormalItemStyle.Render(line))
-	}
-
-	// Pad remaining height.
-	for len(lines) < height {
-		lines = append(lines, "")
-	}
-
-	return strings.Join(lines, "\n")
-}
-
 // HelpBindings returns the key hints for the deployments panel.
 func (p DeploymentsPanel) HelpBindings() []HelpBinding {
-	if p.showOutput {
-		return []HelpBinding{
-			{Key: "j/k", Desc: "scroll"},
-			{Key: "g", Desc: "top"},
-			{Key: "esc", Desc: "back"},
-			{Key: "tab", Desc: "switch panel"},
-			{Key: "q", Desc: "quit"},
-		}
-	}
 	return []HelpBinding{
 		{Key: "j/k", Desc: "navigate"},
 		{Key: "enter", Desc: "output"},
@@ -453,8 +366,7 @@ func (p DeploymentsPanel) HelpBindings() []HelpBinding {
 		{Key: "r", Desc: "reset status"},
 		{Key: "g/G", Desc: "top/bottom"},
 		{Key: "esc", Desc: "back"},
-		{Key: "tab", Desc: "switch panel"},
-		{Key: "q", Desc: "quit"},
+		{Key: "tab", Desc: "next panel"},
 	}
 }
 

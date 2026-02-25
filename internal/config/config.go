@@ -116,3 +116,43 @@ func (c *Config) SSHUserFor(serverName string) string {
 	}
 	return c.Forge.SSHUser
 }
+
+// ProjectConfig is a per-directory config stored in .phorge in the working
+// directory. It lets users pin a default server and/or site for a project.
+type ProjectConfig struct {
+	Server string `toml:"server,omitempty"`
+	Site   string `toml:"site,omitempty"`
+}
+
+// LoadProjectConfig reads the .phorge file from the current directory.
+// If the file does not exist, it returns an empty ProjectConfig (no error).
+func LoadProjectConfig() ProjectConfig {
+	path := filepath.Join(".", ".phorge")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ProjectConfig{}
+	}
+	var cfg ProjectConfig
+	if err := toml.Unmarshal(data, &cfg); err != nil {
+		return ProjectConfig{}
+	}
+	return cfg
+}
+
+// SaveProjectConfig writes the .phorge file in the current directory.
+// If both server and site are empty, it deletes the file.
+func SaveProjectConfig(cfg ProjectConfig) error {
+	path := filepath.Join(".", ".phorge")
+	if cfg.Server == "" && cfg.Site == "" {
+		// Remove the file when clearing all defaults.
+		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
+	data, err := toml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o600)
+}

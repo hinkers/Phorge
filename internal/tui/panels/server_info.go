@@ -76,7 +76,7 @@ func (s ServerInfo) View(width, height int, focused bool) string {
 	}
 
 	// Pad to fill the panel height.
-	for len(lines) < innerHeight {
+	for len(lines) < innerHeight-1 {
 		lines = append(lines, "")
 	}
 

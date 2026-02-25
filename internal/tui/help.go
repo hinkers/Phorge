@@ -217,15 +217,31 @@ func (h HelpModal) View(width, height int) string {
 func helpSections() []helpSection {
 	return []helpSection{
 		{
-			title: "Navigation",
+			title: "Tree Panel",
 			bindings: []helpEntry{
 				{"j/k", "Move up/down"},
+				{"h/l", "Collapse/expand node"},
 				{"g/G", "Top/bottom"},
-				{"Enter", "Select/drill in"},
-				{"Esc", "Go back"},
+				{"Enter", "Select → detail panel"},
+				{"Space", "Expand/collapse server"},
+				{"/", "Filter servers & sites"},
+				{"Esc", "Clear filter"},
+			},
+		},
+		{
+			title: "Navigation",
+			bindings: []helpEntry{
 				{"Tab", "Next panel"},
 				{"Shift+Tab", "Previous panel"},
-				{"/", "Search/filter"},
+				{"Esc", "Go back"},
+			},
+		},
+		{
+			title: "Output Panel",
+			bindings: []helpEntry{
+				{"j/k", "Scroll up/down"},
+				{"g/G", "Top/bottom"},
+				{"Esc", "Back to detail"},
 			},
 		},
 		{
@@ -245,6 +261,7 @@ func helpSections() []helpSection {
 				{"s", "SSH"},
 				{"f", "SFTP"},
 				{"r", "Reboot server"},
+				{"D", "Set/clear default"},
 			},
 		},
 		{
@@ -253,7 +270,7 @@ func helpSections() []helpSection {
 				{"d", "Deploy"},
 				{"e", "Edit env/script"},
 				{"s", "SSH"},
-				{"D", "Open database"},
+				{"D", "Set/clear default"},
 				{"l", "View logs"},
 			},
 		},

@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/bubbles/v2/key"
+	"github.com/charmbracelet/x/ansi"
 	lipgloss "charm.land/lipgloss/v2"
 
 	"github.com/hinkers/Phorge/internal/config"
@@ -22,25 +24,26 @@ import (
 type Focus int
 
 const (
-	FocusServerList  Focus = iota
-	FocusContextList       // sites or other context items
-	FocusDetailPanel
+	FocusTree   Focus = iota
+	FocusDetail
+	FocusOutput
 )
 
 // panelCount is the number of focusable panels.
 const panelCount = 3
 
-// App is the root bubbletea model for the three-panel lazygit-style layout.
+// App is the root bubbletea model for the lazygit-style layout.
 type App struct {
-	forge  *forge.Client
-	config *config.Config
+	forge   *forge.Client
+	config  *config.Config
+	project config.ProjectConfig
 
 	focus         Focus
 	width, height int
 
 	// Sub-model panels.
-	serverList        panels.ServerList
-	siteList          panels.SiteList
+	treePanel         panels.TreePanel
+	outputPanel       panels.OutputPanel
 	serverInfo        panels.ServerInfo
 	siteInfo          panels.SiteInfo
 	deploymentsPanel  panels.DeploymentsPanel
@@ -94,6 +97,9 @@ type App struct {
 	// Help modal overlay.
 	helpModal HelpModal
 
+	// Output polling state for auto-updating deployment/command output.
+	outputPoll outputPollState
+
 	// Keymaps
 	globalKeys    GlobalKeyMap
 	navKeys       NavKeyMap
@@ -102,19 +108,36 @@ type App struct {
 	siteActKeys   SiteActionKeyMap
 }
 
+// treeSitesLoadedMsg is sent when sites for a server have been fetched
+// in response to expanding a tree node.
+type treeSitesLoadedMsg struct {
+	serverID int64
+	sites    []forge.Site
+}
+
+// outputPollState tracks the active output polling context.
+type outputPollState struct {
+	serverID     int64
+	siteID       int64
+	deploymentID int64
+	active       bool
+}
+
 // NewApp creates a new App model with the given configuration.
 func NewApp(cfg *config.Config) App {
 	client := forge.NewClient(cfg.Forge.APIKey)
+	project := config.LoadProjectConfig()
 	return App{
-		forge:         client,
-		config:        cfg,
-		focus:         FocusServerList,
-		activeTab:     1,
-		serverList:    panels.NewServerList(),
-		siteList:      panels.NewSiteList(),
-		serverInfo:    panels.NewServerInfo(),
-		siteInfo:      panels.NewSiteInfo(),
-		helpModal:     NewHelpModal(),
+		forge:       client,
+		config:      cfg,
+		project:     project,
+		focus:       FocusTree,
+		activeTab:   1,
+		treePanel:   panels.NewTreePanel().SetDefaultServer(project.Server).SetDefaultSite(project.Site),
+		outputPanel: panels.NewOutputPanel(),
+		serverInfo:  panels.NewServerInfo(),
+		siteInfo:    panels.NewSiteInfo(),
+		helpModal:   NewHelpModal(),
 		globalKeys:    DefaultGlobalKeyMap(),
 		navKeys:       DefaultNavKeyMap(),
 		sectionKeys:   DefaultSectionKeyMap(),
@@ -168,40 +191,76 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case serversLoadedMsg:
 		m.loading = false
-		m.serverList = m.serverList.SetServers(msg.servers).SetLoading(false)
-		sel := m.serverList.Selected()
-		m.selectedSrv = sel
-		m.serverInfo = m.serverInfo.SetServer(sel)
-		if sel != nil {
-			m.siteList = m.siteList.SetServerName(sel.Name).SetLoading(true)
-			return m, m.fetchSites(sel.ID)
+		m.treePanel = m.treePanel.SetServers(msg.servers).SetLoading(false)
+
+		// Auto-expand default server from per-directory .phorge config.
+		var cmds []tea.Cmd
+		if defaultName := m.project.Server; defaultName != "" {
+			if srv := m.treePanel.FindServerByName(defaultName); srv != nil {
+				var cmd tea.Cmd
+				m.treePanel, cmd = m.treePanel.ExpandServer(srv.ID)
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+				var found bool
+				m.treePanel, found = m.treePanel.SetCursorToServer(srv.ID)
+				_ = found
+			}
+		}
+
+		// Select whatever the cursor is on.
+		srv, site := m.treePanel.Selected()
+		if srv.ID != 0 {
+			m.selectedSrv = &srv
+			m.serverInfo = m.serverInfo.SetServer(&srv)
+		} else {
+			m.selectedSrv = nil
+			m.serverInfo = m.serverInfo.SetServer(nil)
+		}
+		m.selectedSite = site
+		m.siteInfo = m.siteInfo.SetSite(site)
+		if len(cmds) > 0 {
+			return m, tea.Batch(cmds...)
 		}
 		return m, nil
 
-	case sitesLoadedMsg:
-		m.siteList = m.siteList.SetSites(msg.sites)
-		m.selectedSite = m.siteList.Selected()
-		m.siteInfo = m.siteInfo.SetSite(m.selectedSite)
-		return m, nil
-
-	// Panel-emitted messages: a server was navigated to.
-	case panels.ServerSelectedMsg:
+	// Tree panel: user navigated to a node.
+	case panels.TreeNodeSelectedMsg:
 		srv := msg.Server
 		m.selectedSrv = &srv
 		m.serverInfo = m.serverInfo.SetServer(&srv)
-		m.selectedSite = nil
-		m.siteInfo = m.siteInfo.SetSite(nil)
-		m.siteList = m.siteList.SetServerName(srv.Name).SetLoading(true)
-		return m, m.fetchSites(srv.ID)
+		if msg.Site != nil {
+			site := *msg.Site
+			m.selectedSite = &site
+			m.siteInfo = m.siteInfo.SetSite(&site)
+		} else {
+			m.selectedSite = nil
+			m.siteInfo = m.siteInfo.SetSite(nil)
+		}
+		return m, nil
 
-	// Panel-emitted messages: a site was navigated to.
-	case panels.SiteSelectedMsg:
-		site := msg.Site
-		m.selectedSite = &site
-		m.siteInfo = m.siteInfo.SetSite(&site)
-		// Re-initialise the active detail panel.
-		if m.focus == FocusDetailPanel && m.selectedSrv != nil {
-			return m.initTabPanel(m.activeTab, m.selectedSrv.ID, site.ID)
+	// Tree panel: needs sites for a server.
+	case panels.TreeFetchSitesMsg:
+		m.treePanel = m.treePanel.SetSitesLoading(msg.ServerID)
+		return m, m.fetchSitesForTree(msg.ServerID)
+
+	// Sites loaded for tree expansion.
+	case treeSitesLoadedMsg:
+		m.treePanel = m.treePanel.SetSites(msg.serverID, msg.sites)
+
+		// If a default site is configured, navigate to it when its server's
+		// sites are first loaded.
+		if defaultSite := m.project.Site; defaultSite != "" {
+			if defaultServer := m.project.Server; defaultServer != "" {
+				if srv := m.treePanel.FindServerByName(defaultServer); srv != nil && srv.ID == msg.serverID {
+					_, site := m.treePanel.FindSiteByName(defaultSite)
+					if site != nil {
+						m.treePanel, _ = m.treePanel.SetCursorToSite(site.ID)
+						m.selectedSite = site
+						m.siteInfo = m.siteInfo.SetSite(site)
+					}
+				}
+			}
 		}
 		return m, nil
 
@@ -211,10 +270,52 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.deploymentsPanel = p.(panels.DeploymentsPanel)
 		return m, cmd
 
+	// User pressed Enter on a deployment to view output.
+	case panels.DeployViewOutputMsg:
+		// Start polling if the deployment might still be running.
+		m.outputPoll = outputPollState{
+			serverID:     msg.ServerID,
+			siteID:       msg.SiteID,
+			deploymentID: msg.DeploymentID,
+			active:       true,
+		}
+		return m, m.fetchDeployOutputWithStatus(msg.ServerID, msg.SiteID, msg.DeploymentID)
+
+	// Deploy output fetched — route to output panel.
 	case panels.DeployOutputMsg:
-		p, cmd := m.deploymentsPanel.Update(msg)
-		m.deploymentsPanel = p.(panels.DeploymentsPanel)
-		return m, cmd
+		m.outputPanel = m.outputPanel.SetContent("Deploy Output", msg.Output)
+		m.focus = FocusOutput
+		return m, nil
+
+	// Polled output+status result.
+	case pollOutputResultMsg:
+		title := "Deploy Output"
+		if !msg.finished {
+			title = "Deploy Output (deploying...)"
+		}
+		m.outputPanel = m.outputPanel.SetContent(title, msg.output)
+		m.focus = FocusOutput
+		if msg.finished {
+			m.outputPoll.active = false
+			// Refresh the deployments list to show updated status.
+			if m.activeTab == 1 {
+				return m, m.deploymentsPanel.LoadDeployments()
+			}
+			return m, nil
+		}
+		// Continue polling.
+		return m, m.pollOutputTick()
+
+	// Poll timer fired.
+	case pollOutputTickMsg:
+		if !m.outputPoll.active {
+			return m, nil
+		}
+		return m, m.fetchDeployOutputWithStatus(
+			m.outputPoll.serverID,
+			m.outputPoll.siteID,
+			m.outputPoll.deploymentID,
+		)
 
 	case panels.DeployResetMsg:
 		if msg.Err != nil {
@@ -521,10 +622,32 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.confirm = nil
 		return m.handleConfirmResult(msg)
 
+	case setDefaultMsg:
+		if msg.err != nil {
+			m.toast = fmt.Sprintf("Failed to save default: %v", msg.err)
+			m.toastIsErr = true
+		} else if msg.serverName == "" && msg.siteName == "" {
+			m.project.Server = ""
+			m.project.Site = ""
+			m.treePanel = m.treePanel.SetDefaultServer("").SetDefaultSite("")
+			m.toast = "Cleared default"
+			m.toastIsErr = false
+		} else {
+			m.project.Server = msg.serverName
+			m.project.Site = msg.siteName
+			m.treePanel = m.treePanel.SetDefaultServer(msg.serverName).SetDefaultSite(msg.siteName)
+			if msg.siteName != "" {
+				m.toast = fmt.Sprintf("Set %s/%s as default", msg.serverName, msg.siteName)
+			} else {
+				m.toast = fmt.Sprintf("Set %s as default server", msg.serverName)
+			}
+			m.toastIsErr = false
+		}
+		return m, m.clearToastAfter(3 * time.Second)
+
 	case errMsg:
 		m.loading = false
-		m.serverList = m.serverList.SetLoading(false)
-		m.siteList = m.siteList.SetLoading(false)
+		m.treePanel = m.treePanel.SetLoading(false)
 		m.toast = fmt.Sprintf("Error: %v", msg.err)
 		m.toastIsErr = true
 		return m, m.clearToastAfter(5 * time.Second)
@@ -587,18 +710,11 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleKey processes key events, routing to global keys first, then focus-specific keys.
 func (m App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	// When a list panel's filter input is active, route all key events
-	// directly to that panel (bypass global keys like q, tab, etc.).
-	if m.focus == FocusServerList && m.serverList.FilterActive() {
+	// When the tree panel's filter is active, route all key events to it.
+	if m.focus == FocusTree && m.treePanel.FilterActive() {
 		var cmd tea.Cmd
-		panel, cmd := m.serverList.Update(msg)
-		m.serverList = panel.(panels.ServerList)
-		return m, cmd
-	}
-	if m.focus == FocusContextList && m.siteList.FilterActive() {
-		var cmd tea.Cmd
-		panel, cmd := m.siteList.Update(msg)
-		m.siteList = panel.(panels.SiteList)
+		panel, cmd := m.treePanel.Update(msg)
+		m.treePanel = panel.(panels.TreePanel)
 		return m, cmd
 	}
 
@@ -617,7 +733,7 @@ func (m App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case key.Matches(msg, m.globalKeys.Refresh):
 		m.loading = true
-		m.serverList = m.serverList.SetLoading(true)
+		m.treePanel = m.treePanel.SetLoading(true)
 		return m, m.fetchServers()
 	case key.Matches(msg, m.globalKeys.SSH):
 		cmd := m.sshCmd()
@@ -649,58 +765,120 @@ func (m App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	// Panel-specific keys.
 	switch m.focus {
-	case FocusServerList:
-		return m.handleServerListKey(msg)
-	case FocusContextList:
-		return m.handleContextListKey(msg)
-	case FocusDetailPanel:
+	case FocusTree:
+		return m.handleTreeKey(msg)
+	case FocusDetail:
 		return m.handleDetailKey(msg)
+	case FocusOutput:
+		return m.handleOutputKey(msg)
 	}
 
 	return m, nil
 }
 
-// handleServerListKey processes keys when the server list panel is focused.
-func (m App) handleServerListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	// Check for server-specific action keys first (reboot, etc.).
-	switch {
-	case key.Matches(msg, m.navKeys.Enter):
-		m.focus = FocusContextList
-		return m, nil
-	case key.Matches(msg, m.serverActKeys.Reboot):
-		if m.selectedSrv != nil {
+// handleTreeKey processes keys when the tree panel is focused.
+func (m App) handleTreeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	onServer := m.treePanel.CursorOnServer()
+
+	// Server-level action keys.
+	if onServer && m.selectedSrv != nil {
+		switch {
+		case key.Matches(msg, m.serverActKeys.Reboot):
 			return m, m.rebootServer(m.selectedSrv.ID)
+		case key.Matches(msg, m.serverActKeys.SSH):
+			cmd := m.sshCmd()
+			if cmd != nil {
+				return m, cmd
+			}
+			return m, nil
+		case key.Matches(msg, m.serverActKeys.SFTP):
+			cmd := m.sftpCmd()
+			if cmd != nil {
+				return m, cmd
+			}
+			return m, nil
+		case key.Matches(msg, key.NewBinding(key.WithKeys("D"))):
+			// Toggle default server for this directory (.phorge file).
+			return m, m.toggleDefault(m.selectedSrv.Name, "")
 		}
-		return m, nil
 	}
 
-	// Delegate navigation keys to the server list panel.
-	var cmd tea.Cmd
-	panel, cmd := m.serverList.Update(msg)
-	m.serverList = panel.(panels.ServerList)
-	return m, cmd
-}
-
-// handleContextListKey processes keys when the context (sites) list is focused.
-func (m App) handleContextListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	// Handle app-level keys (focus changes).
-	switch {
-	case key.Matches(msg, m.navKeys.Enter):
-		m.focus = FocusDetailPanel
-		// Initialise the active tab panel when entering the detail panel.
-		if m.selectedSite != nil && m.selectedSrv != nil {
-			return m.initTabPanel(m.activeTab, m.selectedSrv.ID, m.selectedSite.ID)
+	// Site-level action keys.
+	if !onServer && m.selectedSite != nil && m.selectedSrv != nil {
+		switch {
+		case key.Matches(msg, m.siteActKeys.Deploy):
+			c := components.NewConfirm("deploy", "Deploy site now?")
+			m.confirm = &c
+			return m, nil
+		case key.Matches(msg, m.siteActKeys.SSH):
+			cmd := m.sshCmd()
+			if cmd != nil {
+				return m, cmd
+			}
+			return m, nil
+		case key.Matches(msg, key.NewBinding(key.WithKeys("D"))):
+			// Toggle default site for this directory (.phorge file).
+			return m, m.toggleDefault(m.selectedSrv.Name, m.selectedSite.Name)
 		}
-		return m, nil
-	case key.Matches(msg, m.navKeys.Back):
-		m.focus = FocusServerList
-		return m, nil
 	}
 
-	// Delegate navigation keys to the site list panel.
+	// Enter focuses the detail panel for both server and site nodes.
+	if key.Matches(msg, m.navKeys.Enter) {
+		srv, site := m.treePanel.Selected()
+		if site != nil {
+			m.focus = FocusDetail
+			if m.selectedSrv != nil {
+				return m.initTabPanel(m.activeTab, m.selectedSrv.ID, site.ID)
+			}
+			return m, nil
+		}
+		if srv.ID != 0 {
+			// Server node: if not expanded, expand first to load sites.
+			if !m.treePanel.IsExpanded(srv.ID) {
+				var cmd tea.Cmd
+				panel, cmd := m.treePanel.Update(msg)
+				m.treePanel = panel.(panels.TreePanel)
+				return m, cmd
+			}
+			// Already expanded: focus the detail panel.
+			m.focus = FocusDetail
+			return m, nil
+		}
+	}
+
+	// l on a site node focuses the detail panel (vim-style: right = drill in).
+	if key.Matches(msg, key.NewBinding(key.WithKeys("l", "right"))) {
+		_, site := m.treePanel.Selected()
+		if site != nil {
+			m.focus = FocusDetail
+			if m.selectedSrv != nil {
+				return m.initTabPanel(m.activeTab, m.selectedSrv.ID, site.ID)
+			}
+			return m, nil
+		}
+		// For server nodes, fall through to tree panel (which handles expand).
+	}
+
+	// Server-level tab switching from tree (so the detail panel updates).
+	if onServer && m.selectedSrv != nil {
+		switch {
+		case key.Matches(msg, m.sectionKeys.Databases):
+			return m.switchToServerTab(3)
+		case key.Matches(msg, m.sectionKeys.Daemons):
+			return m.switchToServerTab(6)
+		case key.Matches(msg, m.sectionKeys.Firewall):
+			return m.switchToServerTab(7)
+		case key.Matches(msg, m.sectionKeys.Jobs):
+			return m.switchToServerTab(8)
+		case key.Matches(msg, m.sectionKeys.Domains):
+			return m.switchToServerTab(9)
+		}
+	}
+
+	// Delegate navigation keys to the tree panel.
 	var cmd tea.Cmd
-	panel, cmd := m.siteList.Update(msg)
-	m.siteList = panel.(panels.SiteList)
+	panel, cmd := m.treePanel.Update(msg)
+	m.treePanel = panel.(panels.TreePanel)
 	return m, cmd
 }
 
@@ -727,7 +905,7 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// If the commands panel is showing detail and user presses Esc,
-	// go back to the commands list (not up to context panel).
+	// go back to the commands list (not up to tree panel).
 	if m.activeTab == 6 && m.selectedSite != nil && m.commandsPanel.ShowingDetail() {
 		if key.Matches(msg, m.navKeys.Back) {
 			p, cmd := m.commandsPanel.Update(msg)
@@ -736,19 +914,14 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// If the deployments panel is showing output and user presses Esc,
-	// go back to the deployments list (not up to context panel).
-	if m.activeTab == 1 && m.selectedSite != nil && m.deploymentsPanel.ShowingOutput() {
-		if key.Matches(msg, m.navKeys.Back) {
-			p, cmd := m.deploymentsPanel.Update(msg)
-			m.deploymentsPanel = p.(panels.DeploymentsPanel)
-			return m, cmd
-		}
-	}
-
 	switch {
 	case key.Matches(msg, m.navKeys.Back):
-		m.focus = FocusContextList
+		// In server-only context with a server tab active, go back to Info first.
+		if m.selectedSite == nil && m.selectedSrv != nil && serverTabNums[m.activeTab] {
+			m.activeTab = 1 // Reset to default (shows Info in server context).
+			return m, nil
+		}
+		m.focus = FocusTree
 		return m, nil
 
 	// Section tab switching (1-9).
@@ -843,6 +1016,32 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// handleOutputKey processes keys when the output panel is focused.
+func (m App) handleOutputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.navKeys.Back):
+		m.focus = FocusDetail
+		m.outputPoll.active = false // Stop polling when leaving output.
+		return m, nil
+	}
+
+	// Delegate scrolling keys to the output panel.
+	p, cmd := m.outputPanel.Update(msg)
+	m.outputPanel = p.(panels.OutputPanel)
+	return m, cmd
+}
+
+// switchToServerTab changes to a server-level tab without changing focus.
+func (m App) switchToServerTab(tab int) (tea.Model, tea.Cmd) {
+	m.activeTab = tab
+	m.showDeployScript = false
+	m.showDBUsers = false
+	if m.selectedSrv == nil {
+		return m, nil
+	}
+	return m.initTabPanel(tab, m.selectedSrv.ID, 0)
 }
 
 // switchToTab changes the active detail tab and initialises the panel if needed.
@@ -1182,7 +1381,7 @@ func (m App) handleDomainsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m App) handleSSHKeysKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("c"))):
-		i := components.NewInput("create-sshkey", "SSH key name:", "my-key")
+		i := components.NewInputWide("create-sshkey-path", "Path to public key (or paste key directly):", "~/.ssh/id_rsa.pub")
 		m.inputDialog = &i
 		return m, nil
 
@@ -1197,6 +1396,40 @@ func (m App) handleSSHKeysKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	p, cmd := m.sshKeysPanel.Update(msg)
 	m.sshKeysPanel = p.(panels.SSHKeysPanel)
 	return m, cmd
+}
+
+// handleSSHKeyCreate handles the result of the SSH key creation input.
+// If the input looks like a file path, it reads the file; otherwise it
+// treats the input as raw key content and prompts for a name.
+func (m App) handleSSHKeyCreate(input string) (tea.Model, tea.Cmd) {
+	// Try to expand ~ and read as file path.
+	path := input
+	if strings.HasPrefix(path, "~/") || path == "~" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			path = filepath.Join(home, path[2:])
+		}
+	}
+
+	content, err := os.ReadFile(path)
+	if err == nil {
+		// Successfully read file. Derive key name from filename.
+		name := filepath.Base(path)
+		name = strings.TrimSuffix(name, ".pub")
+		keyContent := strings.TrimSpace(string(content))
+		if keyContent == "" {
+			m.toast = "File is empty"
+			m.toastIsErr = true
+			return m, m.clearToastAfter(3 * time.Second)
+		}
+		return m, m.sshKeysPanel.CreateKey(name, keyContent, "forge")
+	}
+
+	// Not a file — treat as raw key content. Prompt for a name.
+	m.pendingInputValue = input
+	i := components.NewInput("create-sshkey-name", "Key name:", "my-key")
+	m.inputDialog = &i
+	return m, nil
 }
 
 // handleInputResult processes the result of an input dialog.
@@ -1234,17 +1467,13 @@ func (m App) handleInputResult(msg components.InputResult) (tea.Model, tea.Cmd) 
 		return m, m.commandsPanel.CreateCommand(value)
 	case "add-domain":
 		return m, m.domainsPanel.AddAlias(value)
-	case "create-sshkey":
-		// For SSH key creation, we need the key content too.
-		// Store the name and prompt for the key content.
-		m.pendingInputValue = value
-		i := components.NewInput("create-sshkey-content", "Public key content:", "ssh-rsa AAAA...")
-		m.inputDialog = &i
-		return m, nil
-	case "create-sshkey-content":
-		name := m.pendingInputValue
+	case "create-sshkey-path":
+		return m.handleSSHKeyCreate(value)
+	case "create-sshkey-name":
+		// Second step: user provided a name for a pasted key.
+		keyContent := m.pendingInputValue
 		m.pendingInputValue = ""
-		return m, m.sshKeysPanel.CreateKey(name, value, "forge")
+		return m, m.sshKeysPanel.CreateKey(value, keyContent, "forge")
 	}
 
 	return m, nil
@@ -1304,7 +1533,7 @@ func truncateStr(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-// View renders the three-panel layout with a help bar at the bottom.
+// View renders the layout: tree (left), detail+output (right), footer (bottom).
 func (m App) View() tea.View {
 	if m.width == 0 || m.height == 0 {
 		v := tea.NewView("Loading...")
@@ -1312,13 +1541,13 @@ func (m App) View() tea.View {
 		return v
 	}
 
-	// Reserve space for the help bar (1 line) and optional toast (1 line).
-	helpHeight := 1
+	// Reserve space for the footer (1 line) and optional toast (1 line).
+	footerHeight := 1
 	toastHeight := 0
 	if m.toast != "" {
 		toastHeight = 1
 	}
-	contentHeight := m.height - helpHeight - toastHeight
+	contentHeight := m.height - footerHeight - toastHeight
 
 	// Left panel = ~30% width, right panel = rest.
 	leftWidth := m.width * 3 / 10
@@ -1327,19 +1556,53 @@ func (m App) View() tea.View {
 	}
 	rightWidth := m.width - leftWidth
 
-	// Build the three panels using sub-models.
-	serverPanel := m.serverList.View(leftWidth, contentHeight, m.focus == FocusServerList)
-	contextPanel := m.siteList.View(rightWidth, contentHeight/2, m.focus == FocusContextList)
-	detailPanel := m.renderDetailPanel(rightWidth, contentHeight-contentHeight/2)
+	// Tree panel on the left, full content height.
+	treeView := m.treePanel.View(leftWidth, contentHeight, m.focus == FocusTree)
+
+	// Right side: detail panel on top, output panel on bottom.
+	// Adaptive: if output has no content, give detail more space.
+	var detailHeight, outputHeight int
+	if m.outputPanel.HasContent() {
+		detailHeight = contentHeight * 60 / 100
+		outputHeight = contentHeight - detailHeight
+	} else {
+		detailHeight = contentHeight * 85 / 100
+		outputHeight = contentHeight - detailHeight
+	}
+	if detailHeight < 4 {
+		detailHeight = 4
+	}
+	if outputHeight < 3 {
+		outputHeight = 3
+	}
+	// Re-balance if sum exceeds content height.
+	if detailHeight+outputHeight > contentHeight {
+		outputHeight = contentHeight - detailHeight
+		if outputHeight < 3 {
+			outputHeight = 3
+			detailHeight = contentHeight - outputHeight
+		}
+	}
+
+	detailView := m.renderDetailPanel(rightWidth, detailHeight)
+	outputView := m.outputPanel.View(rightWidth, outputHeight, m.focus == FocusOutput)
 
 	// Join the right panels vertically.
-	rightSide := lipgloss.JoinVertical(lipgloss.Left, contextPanel, detailPanel)
+	rightSide := lipgloss.JoinVertical(lipgloss.Left, detailView, outputView)
 
 	// Join left and right horizontally.
-	mainContent := lipgloss.JoinHorizontal(lipgloss.Top, serverPanel, rightSide)
+	mainContent := lipgloss.JoinHorizontal(lipgloss.Top, treeView, rightSide)
 
-	// Build the help bar.
-	helpBar := m.renderHelpBar()
+	// Hard-clip mainContent to exactly contentHeight lines so the footer
+	// is never pushed off-screen. String-based truncation is more reliable
+	// than lipgloss Height/MaxHeight which can add padding or interact
+	// unexpectedly with border rendering.
+	if mainLines := strings.Split(mainContent, "\n"); len(mainLines) > contentHeight {
+		mainContent = strings.Join(mainLines[:contentHeight], "\n")
+	}
+
+	// Build the footer.
+	footer := m.renderFooter()
 
 	// Assemble everything.
 	var parts []string
@@ -1347,23 +1610,23 @@ func (m App) View() tea.View {
 	if m.toast != "" {
 		parts = append(parts, m.renderToast())
 	}
-	parts = append(parts, helpBar)
+	parts = append(parts, footer)
 
 	content := lipgloss.JoinVertical(lipgloss.Left, parts...)
 
-	// Overlay the input dialog if active.
+	// Overlay the input dialog if active (float on top of existing UI).
 	if m.inputDialog != nil && m.inputDialog.Active {
 		overlay := m.inputDialog.View(m.width, m.height)
 		if overlay != "" {
-			content = overlay
+			content = overlayCenter(overlay, content, m.width, m.height)
 		}
 	}
 
-	// Overlay the confirmation dialog if active.
+	// Overlay the confirmation dialog if active (float on top of existing UI).
 	if m.confirm != nil && m.confirm.Active {
 		overlay := m.confirm.View(m.width, m.height)
 		if overlay != "" {
-			content = overlay
+			content = overlayCenter(overlay, content, m.width, m.height)
 		}
 	}
 
@@ -1380,12 +1643,12 @@ func (m App) View() tea.View {
 	return v
 }
 
-// renderDetailPanel renders the bottom-right detail/preview panel.
+// renderDetailPanel renders the top-right detail panel.
 // When a site is selected it shows a tab bar with site-level panels;
 // when only a server is selected it shows a tab bar with server-level panels;
 // otherwise it shows server info.
 func (m App) renderDetailPanel(width, height int) string {
-	focused := m.focus == FocusDetailPanel
+	focused := m.focus == FocusDetail
 
 	if m.selectedSite != nil {
 		// Render the tab bar as a single line above the section panel.
@@ -1433,8 +1696,8 @@ func (m App) renderDetailPanel(width, height int) string {
 		return lipgloss.JoinVertical(lipgloss.Left, tabBar, sectionPanel)
 	}
 
-	// Server-only context: show server-level tab bar for tabs 6-9.
-	if m.selectedSrv != nil && m.focus == FocusDetailPanel && m.activeTab >= 6 {
+	// Server-only context: always show server tab bar.
+	if m.selectedSrv != nil {
 		tabBar := m.renderServerTabBar(width)
 		tabBarHeight := lipgloss.Height(tabBar)
 
@@ -1445,6 +1708,12 @@ func (m App) renderDetailPanel(width, height int) string {
 
 		var sectionPanel string
 		switch m.activeTab {
+		case 3:
+			if m.showDBUsers {
+				sectionPanel = m.dbUsersPanel.View(width, sectionHeight, focused)
+			} else {
+				sectionPanel = m.databasesPanel.View(width, sectionHeight, focused)
+			}
 		case 6:
 			sectionPanel = m.daemonsPanel.View(width, sectionHeight, focused)
 		case 7:
@@ -1489,19 +1758,33 @@ func (m App) renderTabBar(width int) string {
 	return theme.Truncate(bar, width)
 }
 
-// renderServerTabBar renders the server-level tab bar for tabs 6-9.
+// serverTabNums lists which activeTab values correspond to server-level panels.
+var serverTabNums = map[int]bool{3: true, 6: true, 7: true, 8: true, 9: true}
+
+// renderServerTabBar renders the server-level tab bar.
 func (m App) renderServerTabBar(width int) string {
 	tabs := []struct {
 		num  int
 		name string
 	}{
-		{6, "Daemons"}, {7, "Firewall"}, {8, "Jobs"}, {9, "SSH Keys"},
+		{0, "Info"}, {3, "DB"}, {6, "Daemons"}, {7, "Firewall"}, {8, "Jobs"}, {9, "SSH Keys"},
+	}
+
+	// If the active tab isn't a server-level tab, highlight Info.
+	activeForBar := m.activeTab
+	if !serverTabNums[activeForBar] {
+		activeForBar = 0
 	}
 
 	var parts []string
 	for _, t := range tabs {
-		label := fmt.Sprintf("%d:%s", t.num, t.name)
-		if t.num == m.activeTab {
+		var label string
+		if t.num == 0 {
+			label = t.name
+		} else {
+			label = fmt.Sprintf("%d:%s", t.num, t.name)
+		}
+		if t.num == activeForBar {
 			parts = append(parts, SelectedItemStyle.Render(label))
 		} else {
 			parts = append(parts, HelpBarStyle.Render(label))
@@ -1512,16 +1795,16 @@ func (m App) renderServerTabBar(width int) string {
 	return theme.Truncate(bar, width)
 }
 
-// renderHelpBar renders the context-sensitive help bar at the bottom.
-func (m App) renderHelpBar() string {
+// renderFooter renders the context-sensitive footer with pipe-separated keybindings.
+func (m App) renderFooter() string {
 	var helpBindings []panels.HelpBinding
 
 	switch m.focus {
-	case FocusServerList:
-		helpBindings = m.serverList.HelpBindings()
-	case FocusContextList:
-		helpBindings = m.siteList.HelpBindings()
-	case FocusDetailPanel:
+	case FocusTree:
+		helpBindings = m.treePanel.HelpBindings()
+	case FocusOutput:
+		helpBindings = m.outputPanel.HelpBindings()
+	case FocusDetail:
 		if m.selectedSite != nil && m.activeTab == 1 && m.showDeployScript {
 			helpBindings = m.deployScriptPanel.HelpBindings()
 		} else if m.selectedSite != nil && m.activeTab == 1 {
@@ -1559,21 +1842,26 @@ func (m App) renderHelpBar() string {
 		}
 	}
 
-	// Append global keybindings so they're always visible.
-	globalBindings := []panels.HelpBinding{
-		{Key: "ctrl+s", Desc: "SSH"},
-		{Key: "ctrl+f", Desc: "SFTP"},
-		{Key: "ctrl+d", Desc: "Database"},
-		{Key: "?", Desc: "help"},
+	// Append context-sensitive global keybindings.
+	if m.selectedSrv != nil {
+		helpBindings = append(helpBindings,
+			panels.HelpBinding{Key: "ctrl+s", Desc: "SSH"},
+			panels.HelpBinding{Key: "ctrl+f", Desc: "SFTP"},
+		)
+		if m.selectedSite != nil {
+			helpBindings = append(helpBindings,
+				panels.HelpBinding{Key: "ctrl+d", Desc: "Database"},
+			)
+		}
 	}
-	helpBindings = append(helpBindings, globalBindings...)
+	helpBindings = append(helpBindings, panels.HelpBinding{Key: "?", Desc: "help"})
 
 	var formatted []string
 	for _, b := range helpBindings {
 		formatted = append(formatted, helpBinding(b.Key, b.Desc))
 	}
 
-	bar := strings.Join(formatted, "  ")
+	bar := strings.Join(formatted, HelpBarStyle.Render(" \u2502 "))
 
 	return HelpBarStyle.Width(m.width).Render(bar)
 }
@@ -1585,25 +1873,6 @@ func (m App) renderToast() string {
 		style = ToastErrorStyle
 	}
 	return style.Width(m.width).Render(m.toast)
-}
-
-// tabName returns the display name for the current active tab.
-func (m App) tabName() string {
-	names := map[int]string{
-		1: "Deployments",
-		2: "Environment",
-		3: "Databases",
-		4: "SSL",
-		5: "Workers",
-		6: "Commands",
-		7: "Logs",
-		8: "Git",
-		9: "Domains",
-	}
-	if name, ok := names[m.activeTab]; ok {
-		return name
-	}
-	return "Detail"
 }
 
 // --- Commands (tea.Cmd factories) ---
@@ -1620,15 +1889,89 @@ func (m App) fetchServers() tea.Cmd {
 	}
 }
 
-// fetchSites returns a command that fetches the sites for a server.
-func (m App) fetchSites(serverID int64) tea.Cmd {
+// fetchSitesForTree returns a command that fetches sites for a server and
+// sends a treeSitesLoadedMsg (instead of the old sitesLoadedMsg).
+func (m App) fetchSitesForTree(serverID int64) tea.Cmd {
 	client := m.forge
 	return func() tea.Msg {
 		sites, err := client.Sites.List(context.Background(), serverID)
 		if err != nil {
 			return errMsg{err}
 		}
-		return sitesLoadedMsg{sites}
+		return treeSitesLoadedMsg{serverID: serverID, sites: sites}
+	}
+}
+
+// fetchDeployOutput returns a command that fetches deployment output and
+// sends a DeployOutputMsg to be routed to the output panel.
+func (m App) fetchDeployOutput(serverID, siteID, deployID int64) tea.Cmd {
+	client := m.forge
+	return func() tea.Msg {
+		output, err := client.Deployments.GetOutput(context.Background(), serverID, siteID, deployID)
+		if err != nil {
+			return panels.PanelErrMsg{Err: err}
+		}
+		return panels.DeployOutputMsg{Output: output}
+	}
+}
+
+// fetchDeployOutputWithStatus fetches both output and deployment status,
+// returning a pollOutputResultMsg. Used for auto-updating output.
+func (m App) fetchDeployOutputWithStatus(serverID, siteID, deployID int64) tea.Cmd {
+	client := m.forge
+	return func() tea.Msg {
+		output, err := client.Deployments.GetOutput(context.Background(), serverID, siteID, deployID)
+		if err != nil {
+			return panels.PanelErrMsg{Err: err}
+		}
+		dep, err := client.Deployments.Get(context.Background(), serverID, siteID, deployID)
+		if err != nil {
+			// If we can't get status, still show the output and stop polling.
+			return pollOutputResultMsg{output: output, finished: true}
+		}
+		finished := dep.Status != "deploying"
+		return pollOutputResultMsg{output: output, finished: finished}
+	}
+}
+
+// pollOutputTick returns a command that sends a pollOutputTickMsg after 2 seconds.
+func (m App) pollOutputTick() tea.Cmd {
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+		return pollOutputTickMsg{}
+	})
+}
+
+// toggleDefault saves or clears the default server/site in .phorge.
+// If siteName is empty, it toggles only the server default.
+// If siteName is non-empty, it sets/clears both server and site.
+func (m App) toggleDefault(serverName, siteName string) tea.Cmd {
+	currentServer := m.project.Server
+	currentSite := m.project.Site
+	return func() tea.Msg {
+		var newServer, newSite string
+		if siteName != "" {
+			// Site toggle.
+			if strings.EqualFold(currentServer, serverName) && strings.EqualFold(currentSite, siteName) {
+				// Already the default — clear both.
+				newServer = ""
+				newSite = ""
+			} else {
+				newServer = serverName
+				newSite = siteName
+			}
+		} else {
+			// Server toggle.
+			if strings.EqualFold(currentServer, serverName) && currentSite == "" {
+				// Already the default — clear.
+				newServer = ""
+			} else {
+				newServer = serverName
+				// Clear any site default when setting server-only default.
+				newSite = ""
+			}
+		}
+		err := config.SaveProjectConfig(config.ProjectConfig{Server: newServer, Site: newSite})
+		return setDefaultMsg{serverName: newServer, siteName: newSite, err: err}
 	}
 }
 
@@ -1650,13 +1993,15 @@ func (m App) clearToastAfter(d time.Duration) tea.Cmd {
 
 // --- Helpers ---
 
-// helpBinding formats a single key-description pair for the help bar.
+// helpBinding formats a single key-description pair for the footer.
 func helpBinding(k, desc string) string {
 	return HelpKeyStyle.Render(k) + " " + HelpBarStyle.Render(desc)
 }
 
 // overlayCenter places fg centered on top of bg. Lines outside the overlay
-// area keep the background content, giving a popup-over-panels effect.
+// area keep the background content. Lines within the overlay area preserve
+// background content on both the left and right sides of the overlay box,
+// giving a true floating-popup effect.
 func overlayCenter(fg, bg string, width, height int) string {
 	fgLines := strings.Split(fg, "\n")
 	bgLines := strings.Split(bg, "\n")
@@ -1682,8 +2027,23 @@ func overlayCenter(fg, bg string, width, height int) string {
 	for i, bgLine := range bgLines {
 		fgIdx := i - startY
 		if fgIdx >= 0 && fgIdx < fgH {
-			// Center the overlay line horizontally with padding.
-			result[i] = strings.Repeat(" ", leftPad) + fgLines[fgIdx]
+			bgW := lipgloss.Width(bgLine)
+
+			// Left portion: truncate background to leftPad visual width.
+			left := ansi.Truncate(bgLine, leftPad, "")
+			leftW := lipgloss.Width(left)
+			if leftW < leftPad {
+				left += strings.Repeat(" ", leftPad-leftW)
+			}
+
+			// Right portion: background content after the overlay area.
+			rightStart := leftPad + fgW
+			right := ""
+			if rightStart < bgW {
+				right = ansiCutLeft(bgLine, rightStart)
+			}
+
+			result[i] = left + fgLines[fgIdx] + right
 		} else {
 			result[i] = bgLine
 		}
@@ -1692,3 +2052,41 @@ func overlayCenter(fg, bg string, width, height int) string {
 	return strings.Join(result, "\n")
 }
 
+// ansiCutLeft returns the portion of an ANSI string starting at visual
+// position `skip`. It walks through the string, counting visible characters
+// and preserving ANSI escape sequences.
+func ansiCutLeft(s string, skip int) string {
+	var visWidth int
+	var result strings.Builder
+	inEsc := false
+	skipping := true
+
+	for _, r := range s {
+		if inEsc {
+			if !skipping {
+				result.WriteRune(r)
+			}
+			if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
+				inEsc = false
+			}
+			continue
+		}
+		if r == '\x1b' {
+			inEsc = true
+			if !skipping {
+				result.WriteRune(r)
+			}
+			continue
+		}
+
+		visWidth++
+		if visWidth > skip {
+			if skipping {
+				skipping = false
+			}
+			result.WriteRune(r)
+		}
+	}
+
+	return result.String()
+}

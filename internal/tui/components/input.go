@@ -1,8 +1,6 @@
 package components
 
 import (
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
@@ -33,6 +31,23 @@ func NewInput(id, label, placeholder string) Input {
 	ti := textinput.New()
 	ti.Placeholder = placeholder
 	ti.Prompt = "  "
+	ti.Focus()
+
+	return Input{
+		Label:  label,
+		ID:     id,
+		Active: true,
+		input:  ti,
+	}
+}
+
+// NewInputWide creates a text input dialog with no character limit, suitable
+// for long values like file paths or SSH keys.
+func NewInputWide(id, label, placeholder string) Input {
+	ti := textinput.New()
+	ti.Placeholder = placeholder
+	ti.Prompt = "  "
+	ti.CharLimit = 0 // unlimited
 	ti.Focus()
 
 	return Input{
@@ -98,18 +113,5 @@ func (i Input) View(width, height int) string {
 
 	box := dialogBox.Width(boxWidth).Render(inner)
 
-	// Center the box on the screen.
-	boxH := lipgloss.Height(box)
-	topPad := (height - boxH) / 2
-	if topPad < 0 {
-		topPad = 0
-	}
-
-	leftPad := (width - lipgloss.Width(box)) / 2
-	if leftPad < 0 {
-		leftPad = 0
-	}
-
-	padded := strings.Repeat("\n", topPad) + strings.Repeat(" ", leftPad) + box
-	return padded
+	return box
 }

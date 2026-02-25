@@ -206,7 +206,7 @@ func (p DBUsersPanel) View(width, height int, focused bool) string {
 		Foreground(titleColor).
 		Render(" Database Users ")
 
-	content := p.renderList(innerWidth, innerHeight)
+	content := p.renderList(innerWidth, innerHeight-1)
 
 	return style.
 		Width(innerWidth).
