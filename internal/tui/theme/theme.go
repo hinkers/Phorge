@@ -36,12 +36,16 @@ var TitleStyle = lipgloss.NewStyle().
 
 // Help bar styles.
 var (
+	HelpBarBg = lipgloss.Color("#24283b") // slightly lighter than bg
+
 	HelpBarStyle = lipgloss.NewStyle().
-			Foreground(ColorMuted)
+			Foreground(ColorMuted).
+			Background(HelpBarBg)
 
 	HelpKeyStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(ColorHighlight)
+			Foreground(ColorHighlight).
+			Background(HelpBarBg)
 )
 
 // List item styles.

@@ -90,7 +90,7 @@ func (h HelpModal) Update(msg tea.Msg) (HelpModal, tea.Cmd) {
 	return h, nil
 }
 
-// View renders the help modal overlay.
+// View renders the help modal as a box suitable for overlay on the existing UI.
 func (h HelpModal) View(width, height int) string {
 	if !h.active {
 		return ""
@@ -170,7 +170,7 @@ func (h HelpModal) View(width, height int) string {
 	// Available height for content inside the box (border + padding takes space).
 	boxPadding := 2 // top + bottom padding
 	boxBorder := 2  // top + bottom border
-	availLines := height - boxPadding - boxBorder - 2 // 2 for centering margin
+	availLines := height - boxPadding - boxBorder - 4 // margin for overlay
 	if availLines < 5 {
 		availLines = 5
 	}
@@ -204,39 +204,13 @@ func (h HelpModal) View(width, height int) string {
 
 	inner := strings.Join(visibleLines, "\n")
 
-	box := lipgloss.NewStyle().
+	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(theme.ColorPrimary).
 		Padding(1, 2).
 		Background(theme.ColorBg).
 		Width(contentWidth + 4). // add padding
 		Render(inner)
-
-	// Center the box on screen.
-	boxH := lipgloss.Height(box)
-	boxW := lipgloss.Width(box)
-
-	topPad := (height - boxH) / 2
-	if topPad < 0 {
-		topPad = 0
-	}
-	leftPad := (width - boxW) / 2
-	if leftPad < 0 {
-		leftPad = 0
-	}
-
-	var out strings.Builder
-	for i := 0; i < topPad; i++ {
-		out.WriteString("\n")
-	}
-	boxLines := strings.Split(box, "\n")
-	for _, line := range boxLines {
-		out.WriteString(strings.Repeat(" ", leftPad))
-		out.WriteString(line)
-		out.WriteString("\n")
-	}
-
-	return out.String()
 }
 
 // helpSections returns all help sections with their keybindings.

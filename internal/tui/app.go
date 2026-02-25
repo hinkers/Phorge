@@ -1367,11 +1367,11 @@ func (m App) View() tea.View {
 		}
 	}
 
-	// Overlay the help modal if active.
+	// Overlay the help modal on top of the existing UI.
 	if m.helpModal.Active() {
-		overlay := m.helpModal.View(m.width, m.height)
-		if overlay != "" {
-			content = overlay
+		box := m.helpModal.View(m.width, m.height)
+		if box != "" {
+			content = overlayCenter(box, content, m.width, m.height)
 		}
 	}
 
@@ -1559,6 +1559,15 @@ func (m App) renderHelpBar() string {
 		}
 	}
 
+	// Append global keybindings so they're always visible.
+	globalBindings := []panels.HelpBinding{
+		{Key: "ctrl+s", Desc: "SSH"},
+		{Key: "ctrl+f", Desc: "SFTP"},
+		{Key: "ctrl+d", Desc: "Database"},
+		{Key: "?", Desc: "help"},
+	}
+	helpBindings = append(helpBindings, globalBindings...)
+
 	var formatted []string
 	for _, b := range helpBindings {
 		formatted = append(formatted, helpBinding(b.Key, b.Desc))
@@ -1566,13 +1575,7 @@ func (m App) renderHelpBar() string {
 
 	bar := strings.Join(formatted, "  ")
 
-	// Pad to full width.
-	barWidth := lipgloss.Width(bar)
-	if barWidth < m.width {
-		bar += strings.Repeat(" ", m.width-barWidth)
-	}
-
-	return HelpBarStyle.Render(bar)
+	return HelpBarStyle.Width(m.width).Render(bar)
 }
 
 // renderToast renders the toast notification bar.
@@ -1650,5 +1653,42 @@ func (m App) clearToastAfter(d time.Duration) tea.Cmd {
 // helpBinding formats a single key-description pair for the help bar.
 func helpBinding(k, desc string) string {
 	return HelpKeyStyle.Render(k) + " " + HelpBarStyle.Render(desc)
+}
+
+// overlayCenter places fg centered on top of bg. Lines outside the overlay
+// area keep the background content, giving a popup-over-panels effect.
+func overlayCenter(fg, bg string, width, height int) string {
+	fgLines := strings.Split(fg, "\n")
+	bgLines := strings.Split(bg, "\n")
+
+	// Pad bg to full height.
+	for len(bgLines) < height {
+		bgLines = append(bgLines, "")
+	}
+
+	fgH := len(fgLines)
+	fgW := lipgloss.Width(fg)
+
+	startY := (height - fgH) / 2
+	if startY < 0 {
+		startY = 0
+	}
+	leftPad := (width - fgW) / 2
+	if leftPad < 0 {
+		leftPad = 0
+	}
+
+	result := make([]string, len(bgLines))
+	for i, bgLine := range bgLines {
+		fgIdx := i - startY
+		if fgIdx >= 0 && fgIdx < fgH {
+			// Center the overlay line horizontally with padding.
+			result[i] = strings.Repeat(" ", leftPad) + fgLines[fgIdx]
+		} else {
+			result[i] = bgLine
+		}
+	}
+
+	return strings.Join(result, "\n")
 }
 

@@ -111,6 +111,14 @@ func (s Setup) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		s.userName = msg.user.Name
 		s.done = true
 		return s, nil
+
+	default:
+		// Forward all other messages (e.g. PasteMsg, clipboard results) to the textinput.
+		if !s.done && !s.validating {
+			var cmd tea.Cmd
+			s.input, cmd = s.input.Update(msg)
+			return s, cmd
+		}
 	}
 
 	return s, nil

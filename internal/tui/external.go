@@ -9,6 +9,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/hinkers/Phorge/internal/forge"
 )
 
 // dbReadyMsg is sent after successfully fetching and parsing .env database credentials.
@@ -24,9 +26,26 @@ type dbReadyMsg struct {
 	sshPort    int
 }
 
+// deriveSiteDirectory returns the project root directory for a site.
+// It strips the web directory suffix (e.g. /public) from the full web path
+// to get the project root. Falls back to /home/{user}/{site_name}.
+func deriveSiteDirectory(site *forge.Site, sshUser string) string {
+	if site.WebDirectory != "" && site.Directory != "" {
+		suffix := site.Directory
+		if strings.HasSuffix(site.WebDirectory, suffix) {
+			root := strings.TrimSuffix(site.WebDirectory, suffix)
+			root = strings.TrimRight(root, "/")
+			if root != "" {
+				return root
+			}
+		}
+	}
+	return fmt.Sprintf("/home/%s/%s", sshUser, site.Name)
+}
+
 // sshCmd returns a tea.Cmd that suspends the TUI and opens an SSH session
-// to the currently selected server. If a site with a directory is selected,
-// the SSH session will cd into that directory.
+// to the currently selected server. If a site is selected, the SSH session
+// will cd into the site's project root directory.
 func (m App) sshCmd() tea.Cmd {
 	if m.selectedSrv == nil {
 		return nil
@@ -40,9 +59,10 @@ func (m App) sshCmd() tea.Cmd {
 		args = append([]string{"-p", fmt.Sprintf("%d", m.selectedSrv.SSHPort)}, args...)
 	}
 
-	// If a site is selected with a directory, cd into it on the remote.
-	if m.selectedSite != nil && m.selectedSite.Directory != "" {
-		args = append(args, "-t", fmt.Sprintf("cd %s && exec $SHELL -l", m.selectedSite.Directory))
+	// If a site is selected, cd into its project root on the remote.
+	if m.selectedSite != nil {
+		dir := deriveSiteDirectory(m.selectedSite, user)
+		args = append(args, "-t", fmt.Sprintf("cd %s && exec $SHELL -l", dir))
 	}
 
 	c := exec.Command("ssh", args...)
@@ -66,8 +86,8 @@ func (m App) sftpCmd() tea.Cmd {
 	}
 
 	remotePath := "/"
-	if m.selectedSite != nil && m.selectedSite.Directory != "" {
-		remotePath = m.selectedSite.Directory
+	if m.selectedSite != nil {
+		remotePath = deriveSiteDirectory(m.selectedSite, user)
 	}
 
 	target := fmt.Sprintf("scp://%s@%s:%d%s", user, m.selectedSrv.IPAddress, port, remotePath)
@@ -223,20 +243,17 @@ func findFreePort() (int, error) {
 }
 
 // buildLazysqlArgs constructs the command-line arguments for lazysql
-// based on the database connection type and credentials.
+// based on the database connection type and credentials. The DSN omits the
+// database name so lazysql connects to the server with access to all databases.
 func buildLazysqlArgs(msg dbReadyMsg, localPort int) []string {
-	// lazysql uses environment variables for connection.
-	// We set them via the command's environment and pass the connection string.
 	switch msg.connection {
 	case "pgsql":
-		// For PostgreSQL: lazysql postgres://user:pass@host:port/dbname
-		dsn := fmt.Sprintf("postgres://%s:%s@127.0.0.1:%d/%s?sslmode=disable",
-			msg.username, msg.password, localPort, msg.database)
+		dsn := fmt.Sprintf("postgres://%s:%s@127.0.0.1:%d/?sslmode=disable",
+			msg.username, msg.password, localPort)
 		return []string{dsn}
 	default:
-		// For MySQL (default): lazysql mysql://user:pass@host:port/dbname
-		dsn := fmt.Sprintf("mysql://%s:%s@127.0.0.1:%d/%s",
-			msg.username, msg.password, localPort, msg.database)
+		dsn := fmt.Sprintf("mysql://%s:%s@127.0.0.1:%d/",
+			msg.username, msg.password, localPort)
 		return []string{dsn}
 	}
 }
