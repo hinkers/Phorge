@@ -208,6 +208,16 @@ func (p SSHKeysPanel) View(width, height int, focused bool) string {
 		Render(title + "\n" + content)
 }
 
+const sshKeyTableOverhead = 2 + colStatusWidth + 2 + 4
+
+func sshKeyNameWidth(maxWidth int) int {
+	w := maxWidth - sshKeyTableOverhead
+	if w < 10 {
+		w = 10
+	}
+	return w
+}
+
 func (p SSHKeysPanel) renderList(width, height int) string {
 	var lines []string
 
@@ -216,7 +226,9 @@ func (p SSHKeysPanel) renderList(width, height int) string {
 	} else if len(p.keys) == 0 {
 		lines = append(lines, theme.NormalItemStyle.Render("No SSH keys found"))
 	} else {
-		visibleHeight := height - 1
+		lines = append(lines, p.renderKeyHeader(width))
+
+		visibleHeight := height - 2
 		if visibleHeight < 1 {
 			visibleHeight = 1
 		}
@@ -225,7 +237,7 @@ func (p SSHKeysPanel) renderList(width, height int) string {
 			startIdx = p.cursor - visibleHeight + 1
 		}
 
-		for i := startIdx; i < len(p.keys) && len(lines) < visibleHeight; i++ {
+		for i := startIdx; i < len(p.keys) && len(lines)-1 < visibleHeight; i++ {
 			k := p.keys[i]
 			line := p.renderKeyLine(k, i, width)
 			lines = append(lines, line)
@@ -239,31 +251,43 @@ func (p SSHKeysPanel) renderList(width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
+func (p SSHKeysPanel) renderKeyHeader(maxWidth int) string {
+	nameW := sshKeyNameWidth(maxWidth)
+	line := fmt.Sprintf("  %-*s  %-*s",
+		colStatusWidth, "STATUS",
+		nameW, "NAME",
+	)
+	return theme.Truncate(headerStyle.Render(line), maxWidth)
+}
+
 func (p SSHKeysPanel) renderKeyLine(k forge.SSHKey, idx, maxWidth int) string {
 	icon := statusIcon(k.Status)
+	statusText := k.Status
+	if statusText == "" {
+		statusText = "unknown"
+	}
 
 	name := k.Name
-	statusStr := fmt.Sprintf(" [%s]", k.Status)
-
-	overhead := 22
-	nameWidth := maxWidth - overhead
-	if nameWidth < 10 {
-		nameWidth = 10
+	if name == "" {
+		name = "-"
 	}
-	name = truncatePlain(name, nameWidth)
+
+	nameW := sshKeyNameWidth(maxWidth)
+	name = truncatePlain(name, nameW)
+
+	statusPad := colStatusWidth - 2
+	statusStr := icon + " " + fmt.Sprintf("%-*s", statusPad, truncatePlain(statusText, statusPad))
 
 	if idx == p.cursor {
 		line := theme.CursorStyle.Render("> ") +
-			icon + " " +
-			theme.SelectedItemStyle.Render(name) +
-			"  " + theme.NormalItemStyle.Render(statusStr)
+			statusStr +
+			"  " + theme.SelectedItemStyle.Render(fmt.Sprintf("%-*s", nameW, name))
 		return theme.Truncate(line, maxWidth)
 	}
 
 	line := "  " +
-		icon + " " +
-		theme.NormalItemStyle.Render(name) +
-		"  " + theme.NormalItemStyle.Render(statusStr)
+		statusStr +
+		"  " + theme.NormalItemStyle.Render(fmt.Sprintf("%-*s", nameW, name))
 	return theme.Truncate(line, maxWidth)
 }
 

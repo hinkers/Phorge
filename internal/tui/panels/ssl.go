@@ -239,6 +239,23 @@ func (p SSLPanel) View(width, height int, focused bool) string {
 		Render(title + "\n" + content)
 }
 
+// Column widths for SSL table.
+// sslColStatusWidth is wider to accommodate the active indicator (* ✓ status).
+const (
+	sslColStatusWidth = 14
+	sslColTypeWidth   = 12
+)
+
+const sslTableOverhead = 2 + sslColStatusWidth + 2 + 2 + sslColTypeWidth + 4
+
+func sslDomainWidth(maxWidth int) int {
+	w := maxWidth - sslTableOverhead
+	if w < 10 {
+		w = 10
+	}
+	return w
+}
+
 func (p SSLPanel) renderList(width, height int) string {
 	var lines []string
 
@@ -247,7 +264,9 @@ func (p SSLPanel) renderList(width, height int) string {
 	} else if len(p.certificates) == 0 {
 		lines = append(lines, theme.NormalItemStyle.Render("No certificates found"))
 	} else {
-		visibleHeight := height - 1
+		lines = append(lines, p.renderCertHeader(width))
+
+		visibleHeight := height - 2
 		if visibleHeight < 1 {
 			visibleHeight = 1
 		}
@@ -256,7 +275,7 @@ func (p SSLPanel) renderList(width, height int) string {
 			startIdx = p.cursor - visibleHeight + 1
 		}
 
-		for i := startIdx; i < len(p.certificates) && len(lines) < visibleHeight; i++ {
+		for i := startIdx; i < len(p.certificates) && len(lines)-1 < visibleHeight; i++ {
 			cert := p.certificates[i]
 			line := p.renderCertLine(cert, i, width)
 			lines = append(lines, line)
@@ -270,16 +289,30 @@ func (p SSLPanel) renderList(width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
+func (p SSLPanel) renderCertHeader(maxWidth int) string {
+	domainW := sslDomainWidth(maxWidth)
+	line := fmt.Sprintf("  %-*s  %-*s  %-*s",
+		sslColStatusWidth, "STATUS",
+		domainW, "DOMAIN",
+		sslColTypeWidth, "TYPE",
+	)
+	return theme.Truncate(headerStyle.Render(line), maxWidth)
+}
+
 func (p SSLPanel) renderCertLine(cert forge.Certificate, idx, maxWidth int) string {
-	// Active indicator.
-	var activeStr string
+	// Active indicator prefix.
+	var activePrefix string
 	if cert.Active {
-		activeStr = lipgloss.NewStyle().Foreground(theme.ColorSecondary).Render("*")
+		activePrefix = lipgloss.NewStyle().Foreground(theme.ColorSecondary).Render("*") + " "
 	} else {
-		activeStr = lipgloss.NewStyle().Foreground(theme.ColorSubtle).Render(" ")
+		activePrefix = "  "
 	}
 
 	icon := statusIcon(cert.Status)
+	statusText := cert.Status
+	if statusText == "" {
+		statusText = "unknown"
+	}
 
 	domain := cert.Domain
 	if domain == "" {
@@ -289,34 +322,27 @@ func (p SSLPanel) renderCertLine(cert forge.Certificate, idx, maxWidth int) stri
 	if certType == "" {
 		certType = "unknown"
 	}
-	statusStr := fmt.Sprintf(" [%s]", cert.Status)
 
-	// Leave room for: cursor(2) + active(2) + icon(2) + type(~12) + status(~14) + spacing(6)
-	overhead := 38
-	domainWidth := maxWidth - overhead
-	if domainWidth < 10 {
-		domainWidth = 10
-	}
-	domain = truncatePlain(domain, domainWidth)
+	domainW := sslDomainWidth(maxWidth)
+	domain = truncatePlain(domain, domainW)
 
-	typeStr := fmt.Sprintf("%-10s", truncatePlain(certType, 10))
+	// Status column: active(*) + icon + status text, padded to sslColStatusWidth.
+	statusPad := sslColStatusWidth - 4 // active(1) + space(1) + icon(1) + space(1)
+	statusStr := activePrefix + icon + " " + fmt.Sprintf("%-*s", statusPad, truncatePlain(statusText, statusPad))
+	typeStr := fmt.Sprintf("%-*s", sslColTypeWidth, truncatePlain(certType, sslColTypeWidth))
 
 	if idx == p.cursor {
 		line := theme.CursorStyle.Render("> ") +
-			activeStr + " " +
-			icon + " " +
-			theme.SelectedItemStyle.Render(domain) +
-			"  " + theme.NormalItemStyle.Render(typeStr) +
-			"  " + theme.NormalItemStyle.Render(statusStr)
+			statusStr +
+			"  " + theme.SelectedItemStyle.Render(fmt.Sprintf("%-*s", domainW, domain)) +
+			"  " + theme.NormalItemStyle.Render(typeStr)
 		return theme.Truncate(line, maxWidth)
 	}
 
 	line := "  " +
-		activeStr + " " +
-		icon + " " +
-		theme.NormalItemStyle.Render(domain) +
-		"  " + theme.NormalItemStyle.Render(typeStr) +
-		"  " + theme.NormalItemStyle.Render(statusStr)
+		statusStr +
+		"  " + theme.NormalItemStyle.Render(fmt.Sprintf("%-*s", domainW, domain)) +
+		"  " + theme.NormalItemStyle.Render(typeStr)
 	return theme.Truncate(line, maxWidth)
 }
 

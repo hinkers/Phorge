@@ -261,6 +261,22 @@ func (p CommandsPanel) renderDetail(width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
+// Column widths for commands table.
+const (
+	cmdColUserWidth = 10
+	cmdColDateWidth = 12
+)
+
+const cmdTableOverhead = 2 + colStatusWidth + 2 + 2 + cmdColUserWidth + 2 + cmdColDateWidth + 4
+
+func cmdFlexWidth(maxWidth int) int {
+	w := maxWidth - cmdTableOverhead
+	if w < 10 {
+		w = 10
+	}
+	return w
+}
+
 func (p CommandsPanel) renderList(width, height int) string {
 	var lines []string
 
@@ -269,7 +285,9 @@ func (p CommandsPanel) renderList(width, height int) string {
 	} else if len(p.commands) == 0 {
 		lines = append(lines, theme.NormalItemStyle.Render("No commands found"))
 	} else {
-		visibleHeight := height - 1
+		lines = append(lines, p.renderCommandHeader(width))
+
+		visibleHeight := height - 2
 		if visibleHeight < 1 {
 			visibleHeight = 1
 		}
@@ -278,7 +296,7 @@ func (p CommandsPanel) renderList(width, height int) string {
 			startIdx = p.cursor - visibleHeight + 1
 		}
 
-		for i := startIdx; i < len(p.commands) && len(lines) < visibleHeight; i++ {
+		for i := startIdx; i < len(p.commands) && len(lines)-1 < visibleHeight; i++ {
 			cmd := p.commands[i]
 			line := p.renderCommandLine(cmd, i, width)
 			lines = append(lines, line)
@@ -292,32 +310,65 @@ func (p CommandsPanel) renderList(width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
+func (p CommandsPanel) renderCommandHeader(maxWidth int) string {
+	flexW := cmdFlexWidth(maxWidth)
+	line := fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s",
+		colStatusWidth, "STATUS",
+		flexW, "COMMAND",
+		cmdColUserWidth, "USER",
+		cmdColDateWidth, "DATE",
+	)
+	return theme.Truncate(headerStyle.Render(line), maxWidth)
+}
+
 func (p CommandsPanel) renderCommandLine(cmd forge.SiteCommand, idx, maxWidth int) string {
 	icon := statusIcon(cmd.Status)
+	statusText := cmd.Status
+	if statusText == "" {
+		statusText = "unknown"
+	}
 
 	command := cmd.Command
-	meta := fmt.Sprintf(" [%s] %s %s", cmd.Status, cmd.UserName, cmd.CreatedAt)
-
-	// Leave room for cursor(2) + icon(2) + meta + spacing.
-	metaWidth := len(meta) + 4
-	nameWidth := maxWidth - metaWidth - 6
-	if nameWidth < 10 {
-		nameWidth = 10
+	if command == "" {
+		command = "-"
 	}
-	command = truncatePlain(command, nameWidth)
+
+	user := cmd.UserName
+	if user == "" {
+		user = "-"
+	}
+
+	date := cmd.CreatedAt
+	if date == "" {
+		date = "-"
+	}
+	// Trim to date portion if it contains a time.
+	if len(date) > cmdColDateWidth {
+		date = date[:cmdColDateWidth]
+	}
+
+	flexW := cmdFlexWidth(maxWidth)
+	command = truncatePlain(command, flexW)
+
+	statusPad := colStatusWidth - 2
+	statusStr := icon + " " + fmt.Sprintf("%-*s", statusPad, truncatePlain(statusText, statusPad))
+	userStr := fmt.Sprintf("%-*s", cmdColUserWidth, truncatePlain(user, cmdColUserWidth))
+	dateStr := fmt.Sprintf("%-*s", cmdColDateWidth, truncatePlain(date, cmdColDateWidth))
 
 	if idx == p.cursor {
 		line := theme.CursorStyle.Render("> ") +
-			icon + " " +
-			theme.SelectedItemStyle.Render(command) +
-			"  " + theme.NormalItemStyle.Render(meta)
+			statusStr +
+			"  " + theme.SelectedItemStyle.Render(fmt.Sprintf("%-*s", flexW, command)) +
+			"  " + theme.NormalItemStyle.Render(userStr) +
+			"  " + theme.NormalItemStyle.Render(dateStr)
 		return theme.Truncate(line, maxWidth)
 	}
 
 	line := "  " +
-		icon + " " +
-		theme.NormalItemStyle.Render(command) +
-		"  " + theme.NormalItemStyle.Render(meta)
+		statusStr +
+		"  " + theme.NormalItemStyle.Render(fmt.Sprintf("%-*s", flexW, command)) +
+		"  " + theme.NormalItemStyle.Render(userStr) +
+		"  " + theme.NormalItemStyle.Render(dateStr)
 	return theme.Truncate(line, maxWidth)
 }
 

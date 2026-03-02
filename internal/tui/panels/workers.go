@@ -247,6 +247,19 @@ func (p WorkersPanel) View(width, height int, focused bool) string {
 		Render(title + "\n" + content)
 }
 
+// Column widths for workers table.
+const workerColProcsWidth = 8
+
+const workerTableOverhead = 2 + colStatusWidth + 2 + 2 + workerColProcsWidth + 4
+
+func workerConnWidth(maxWidth int) int {
+	w := maxWidth - workerTableOverhead
+	if w < 10 {
+		w = 10
+	}
+	return w
+}
+
 func (p WorkersPanel) renderList(width, height int) string {
 	var lines []string
 
@@ -255,7 +268,9 @@ func (p WorkersPanel) renderList(width, height int) string {
 	} else if len(p.workers) == 0 {
 		lines = append(lines, theme.NormalItemStyle.Render("No workers found"))
 	} else {
-		visibleHeight := height - 1
+		lines = append(lines, p.renderWorkerHeader(width))
+
+		visibleHeight := height - 2
 		if visibleHeight < 1 {
 			visibleHeight = 1
 		}
@@ -264,7 +279,7 @@ func (p WorkersPanel) renderList(width, height int) string {
 			startIdx = p.cursor - visibleHeight + 1
 		}
 
-		for i := startIdx; i < len(p.workers) && len(lines) < visibleHeight; i++ {
+		for i := startIdx; i < len(p.workers) && len(lines)-1 < visibleHeight; i++ {
 			w := p.workers[i]
 			line := p.renderWorkerLine(w, i, width)
 			lines = append(lines, line)
@@ -278,8 +293,22 @@ func (p WorkersPanel) renderList(width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
+func (p WorkersPanel) renderWorkerHeader(maxWidth int) string {
+	connW := workerConnWidth(maxWidth)
+	line := fmt.Sprintf("  %-*s  %-*s  %-*s",
+		colStatusWidth, "STATUS",
+		connW, "CONNECTION",
+		workerColProcsWidth, "PROCS",
+	)
+	return theme.Truncate(headerStyle.Render(line), maxWidth)
+}
+
 func (p WorkersPanel) renderWorkerLine(w forge.Worker, idx, maxWidth int) string {
 	icon := statusIcon(w.Status)
+	statusText := w.Status
+	if statusText == "" {
+		statusText = "unknown"
+	}
 
 	conn := w.Connection
 	if conn == "" {
@@ -289,34 +318,28 @@ func (p WorkersPanel) renderWorkerLine(w forge.Worker, idx, maxWidth int) string
 	if queue == "" {
 		queue = "default"
 	}
-	procs := fmt.Sprintf("%d procs", w.Processes)
-	statusStr := fmt.Sprintf(" [%s]", w.Status)
-
-	// Build: connection:queue  procs  status
 	connQueue := fmt.Sprintf("%s:%s", conn, queue)
+	procs := fmt.Sprintf("%d", w.Processes)
 
-	// Leave room for: cursor(2) + icon(2) + procs(~8) + status(~14) + spacing(6)
-	overhead := 32
-	connWidth := maxWidth - overhead
-	if connWidth < 10 {
-		connWidth = 10
-	}
-	connQueue = truncatePlain(connQueue, connWidth)
+	connW := workerConnWidth(maxWidth)
+	connQueue = truncatePlain(connQueue, connW)
+
+	statusPad := colStatusWidth - 2
+	statusStr := icon + " " + fmt.Sprintf("%-*s", statusPad, truncatePlain(statusText, statusPad))
+	procsStr := fmt.Sprintf("%-*s", workerColProcsWidth, procs)
 
 	if idx == p.cursor {
 		line := theme.CursorStyle.Render("> ") +
-			icon + " " +
-			theme.SelectedItemStyle.Render(connQueue) +
-			"  " + theme.NormalItemStyle.Render(procs) +
-			"  " + theme.NormalItemStyle.Render(statusStr)
+			statusStr +
+			"  " + theme.SelectedItemStyle.Render(fmt.Sprintf("%-*s", connW, connQueue)) +
+			"  " + theme.NormalItemStyle.Render(procsStr)
 		return theme.Truncate(line, maxWidth)
 	}
 
 	line := "  " +
-		icon + " " +
-		theme.NormalItemStyle.Render(connQueue) +
-		"  " + theme.NormalItemStyle.Render(procs) +
-		"  " + theme.NormalItemStyle.Render(statusStr)
+		statusStr +
+		"  " + theme.NormalItemStyle.Render(fmt.Sprintf("%-*s", connW, connQueue)) +
+		"  " + theme.NormalItemStyle.Render(procsStr)
 	return theme.Truncate(line, maxWidth)
 }
 

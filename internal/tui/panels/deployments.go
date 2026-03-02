@@ -261,6 +261,18 @@ func (p DeploymentsPanel) View(width, height int, focused bool) string {
 		Render(title + "\n" + content)
 }
 
+// Column widths for the deployments table.
+const (
+	colStatusWidth = 12 // "● deploying" is the widest
+	colAuthorWidth = 10
+	colTimeWidth   = 8
+)
+
+// headerStyle for column headers.
+var headerStyle = lipgloss.NewStyle().
+	Foreground(theme.ColorMuted).
+	Bold(true)
+
 // renderList renders the deployment list view.
 func (p DeploymentsPanel) renderList(width, height int) string {
 	var lines []string
@@ -270,8 +282,12 @@ func (p DeploymentsPanel) renderList(width, height int) string {
 	} else if len(p.deployments) == 0 {
 		lines = append(lines, theme.NormalItemStyle.Render("No deployments found"))
 	} else {
+		// Render table header.
+		lines = append(lines, p.renderHeader(width))
+
 		// Calculate visible range with scrolling.
-		visibleHeight := height - 1 // reserve 1 for title already rendered above
+		// Reserve 1 for the header row.
+		visibleHeight := height - 2
 		if visibleHeight < 1 {
 			visibleHeight = 1
 		}
@@ -280,7 +296,7 @@ func (p DeploymentsPanel) renderList(width, height int) string {
 			startIdx = p.cursor - visibleHeight + 1
 		}
 
-		for i := startIdx; i < len(p.deployments) && len(lines) < visibleHeight; i++ {
+		for i := startIdx; i < len(p.deployments) && len(lines)-1 < visibleHeight; i++ {
 			dep := p.deployments[i]
 			line := p.renderDeploymentLine(dep, i, width)
 			lines = append(lines, line)
@@ -295,10 +311,40 @@ func (p DeploymentsPanel) renderList(width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
-// renderDeploymentLine renders a single deployment entry.
+// tableOverhead is the fixed character budget for non-commit columns:
+// cursor(2) + status(12) + 3 spacers(6) + author(10) + time(8) + border buffer(4).
+const tableOverhead = 2 + colStatusWidth + 2 + 2 + colAuthorWidth + 2 + colTimeWidth + 4
+
+// commitWidth returns the space available for the commit message column.
+func commitWidth(maxWidth int) int {
+	w := maxWidth - tableOverhead
+	if w < 10 {
+		w = 10
+	}
+	return w
+}
+
+// renderHeader renders the column header row.
+func (p DeploymentsPanel) renderHeader(maxWidth int) string {
+	msgWidth := commitWidth(maxWidth)
+
+	line := fmt.Sprintf("  %-*s  %-*s  %-*s  %*s",
+		colStatusWidth, "STATUS",
+		msgWidth, "COMMIT",
+		colAuthorWidth, "AUTHOR",
+		colTimeWidth, "TIME",
+	)
+	return theme.Truncate(headerStyle.Render(line), maxWidth)
+}
+
+// renderDeploymentLine renders a single deployment entry as a table row.
 func (p DeploymentsPanel) renderDeploymentLine(dep forge.Deployment, idx, maxWidth int) string {
-	// Status icon.
+	// Status icon + text.
 	icon := statusIcon(dep.Status)
+	statusText := dep.Status
+	if statusText == "" {
+		statusText = "unknown"
+	}
 
 	// Commit message (truncated).
 	msg := dep.CommitMessage
@@ -308,7 +354,6 @@ func (p DeploymentsPanel) renderDeploymentLine(dep forge.Deployment, idx, maxWid
 	if msg == "" {
 		msg = "No message"
 	}
-	// Remove newlines from the commit message.
 	msg = strings.ReplaceAll(msg, "\n", " ")
 
 	// Author.
@@ -326,31 +371,28 @@ func (p DeploymentsPanel) renderDeploymentLine(dep forge.Deployment, idx, maxWid
 		timeStr = "-"
 	}
 
-	// Build the line: icon  message  author  time
-	// Leave room for: icon(3) + author(~12) + time(~8) + spacing(6) = ~29 chars overhead
-	overhead := 29
-	msgWidth := maxWidth - overhead
-	if msgWidth < 10 {
-		msgWidth = 10
-	}
+	msgWidth := commitWidth(maxWidth)
 	msg = truncatePlain(msg, msgWidth)
 
-	// Format author and time portions.
-	authorStr := fmt.Sprintf("%-10s", truncatePlain(author, 10))
-	timeStr = fmt.Sprintf("%8s", timeStr)
+	// Pad the status text to fill the status column (minus the icon+space).
+	statusPad := colStatusWidth - 2 // icon takes ~1 char + 1 space
+	statusStr := icon + " " + fmt.Sprintf("%-*s", statusPad, truncatePlain(statusText, statusPad))
+
+	authorStr := fmt.Sprintf("%-*s", colAuthorWidth, truncatePlain(author, colAuthorWidth))
+	timeStr = fmt.Sprintf("%*s", colTimeWidth, timeStr)
 
 	if idx == p.cursor {
 		line := theme.CursorStyle.Render("> ") +
-			icon + " " +
-			theme.SelectedItemStyle.Render(msg) +
+			statusStr +
+			"  " + theme.SelectedItemStyle.Render(fmt.Sprintf("%-*s", msgWidth, msg)) +
 			"  " + theme.NormalItemStyle.Render(authorStr) +
 			"  " + theme.NormalItemStyle.Render(timeStr)
 		return theme.Truncate(line, maxWidth)
 	}
 
 	line := "  " +
-		icon + " " +
-		theme.NormalItemStyle.Render(msg) +
+		statusStr +
+		"  " + theme.NormalItemStyle.Render(fmt.Sprintf("%-*s", msgWidth, msg)) +
 		"  " + theme.NormalItemStyle.Render(authorStr) +
 		"  " + theme.NormalItemStyle.Render(timeStr)
 	return theme.Truncate(line, maxWidth)

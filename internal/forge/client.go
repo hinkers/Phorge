@@ -34,6 +34,7 @@ type Client struct {
 	Commands     *CommandsService
 	Git          *GitService
 	Logs         *LogsService
+	Events       *EventsService
 }
 
 // Service types -- each holds a back-pointer to the parent Client.
@@ -53,6 +54,7 @@ type SSHKeysService struct{ client *Client }
 type CommandsService struct{ client *Client }
 type GitService struct{ client *Client }
 type LogsService struct{ client *Client }
+type EventsService struct{ client *Client }
 
 // NewClient creates a new Forge API client authenticated with the given token.
 func NewClient(token string) *Client {
@@ -77,6 +79,7 @@ func NewClient(token string) *Client {
 	c.Commands = &CommandsService{client: c}
 	c.Git = &GitService{client: c}
 	c.Logs = &LogsService{client: c}
+	c.Events = &EventsService{client: c}
 
 	return c
 }

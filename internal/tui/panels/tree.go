@@ -656,7 +656,6 @@ func (t TreePanel) HelpBindings() []HelpBinding {
 	} else {
 		bindings = append(bindings,
 			HelpBinding{Key: "enter", Desc: "select → detail"},
-			HelpBinding{Key: "d", Desc: "deploy"},
 			HelpBinding{Key: "s", Desc: "SSH"},
 			HelpBinding{Key: "D", Desc: "set default"},
 		)

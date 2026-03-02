@@ -150,6 +150,22 @@ func (p JobsPanel) View(width, height int, focused bool) string {
 		Render(title + "\n" + content)
 }
 
+// Column widths for jobs table.
+const (
+	jobColSchedWidth = 14
+	jobColUserWidth  = 8
+)
+
+const jobTableOverhead = 2 + colStatusWidth + 2 + 2 + jobColSchedWidth + 2 + jobColUserWidth + 4
+
+func jobCmdWidth(maxWidth int) int {
+	w := maxWidth - jobTableOverhead
+	if w < 10 {
+		w = 10
+	}
+	return w
+}
+
 func (p JobsPanel) renderList(width, height int) string {
 	var lines []string
 
@@ -158,7 +174,9 @@ func (p JobsPanel) renderList(width, height int) string {
 	} else if len(p.jobs) == 0 {
 		lines = append(lines, theme.NormalItemStyle.Render("No scheduled jobs found"))
 	} else {
-		visibleHeight := height - 1
+		lines = append(lines, p.renderJobHeader(width))
+
+		visibleHeight := height - 2
 		if visibleHeight < 1 {
 			visibleHeight = 1
 		}
@@ -167,7 +185,7 @@ func (p JobsPanel) renderList(width, height int) string {
 			startIdx = p.cursor - visibleHeight + 1
 		}
 
-		for i := startIdx; i < len(p.jobs) && len(lines) < visibleHeight; i++ {
+		for i := startIdx; i < len(p.jobs) && len(lines)-1 < visibleHeight; i++ {
 			job := p.jobs[i]
 			line := p.renderJobLine(job, i, width)
 			lines = append(lines, line)
@@ -181,15 +199,29 @@ func (p JobsPanel) renderList(width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
+func (p JobsPanel) renderJobHeader(maxWidth int) string {
+	cmdWidth := jobCmdWidth(maxWidth)
+	line := fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s",
+		colStatusWidth, "STATUS",
+		cmdWidth, "COMMAND",
+		jobColSchedWidth, "SCHEDULE",
+		jobColUserWidth, "USER",
+	)
+	return theme.Truncate(headerStyle.Render(line), maxWidth)
+}
+
 func (p JobsPanel) renderJobLine(job forge.ScheduledJob, idx, maxWidth int) string {
 	icon := statusIcon(job.Status)
+	statusText := job.Status
+	if statusText == "" {
+		statusText = "unknown"
+	}
 
 	command := job.Command
 	if command == "" {
 		command = "-"
 	}
 
-	// Show cron expression if available, otherwise frequency.
 	freq := job.Cron
 	if freq == "" {
 		freq = job.Frequency
@@ -202,35 +234,29 @@ func (p JobsPanel) renderJobLine(job forge.ScheduledJob, idx, maxWidth int) stri
 	if user == "" {
 		user = "forge"
 	}
-	statusStr := fmt.Sprintf(" [%s]", job.Status)
 
-	// Leave room for: cursor(2) + icon(2) + freq(~12) + user(~8) + status(~14) + spacing(8)
-	overhead := 46
-	cmdWidth := maxWidth - overhead
-	if cmdWidth < 10 {
-		cmdWidth = 10
-	}
+	cmdWidth := jobCmdWidth(maxWidth)
 	command = truncatePlain(command, cmdWidth)
 
-	freqStr := fmt.Sprintf("%-12s", truncatePlain(freq, 12))
-	userStr := fmt.Sprintf("%-8s", truncatePlain(user, 8))
+	statusPad := colStatusWidth - 2
+	statusStr := icon + " " + fmt.Sprintf("%-*s", statusPad, truncatePlain(statusText, statusPad))
+	freqStr := fmt.Sprintf("%-*s", jobColSchedWidth, truncatePlain(freq, jobColSchedWidth))
+	userStr := fmt.Sprintf("%-*s", jobColUserWidth, truncatePlain(user, jobColUserWidth))
 
 	if idx == p.cursor {
 		line := theme.CursorStyle.Render("> ") +
-			icon + " " +
-			theme.SelectedItemStyle.Render(command) +
+			statusStr +
+			"  " + theme.SelectedItemStyle.Render(fmt.Sprintf("%-*s", cmdWidth, command)) +
 			"  " + theme.NormalItemStyle.Render(freqStr) +
-			"  " + theme.NormalItemStyle.Render(userStr) +
-			"  " + theme.NormalItemStyle.Render(statusStr)
+			"  " + theme.NormalItemStyle.Render(userStr)
 		return theme.Truncate(line, maxWidth)
 	}
 
 	line := "  " +
-		icon + " " +
-		theme.NormalItemStyle.Render(command) +
+		statusStr +
+		"  " + theme.NormalItemStyle.Render(fmt.Sprintf("%-*s", cmdWidth, command)) +
 		"  " + theme.NormalItemStyle.Render(freqStr) +
-		"  " + theme.NormalItemStyle.Render(userStr) +
-		"  " + theme.NormalItemStyle.Render(statusStr)
+		"  " + theme.NormalItemStyle.Render(userStr)
 	return theme.Truncate(line, maxWidth)
 }
 

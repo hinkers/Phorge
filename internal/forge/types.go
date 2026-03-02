@@ -186,6 +186,16 @@ type SiteCommand struct {
 	UserName        string `json:"user_name,omitempty"`
 }
 
+// Event represents a server activity event (e.g. deployment, reboot).
+type Event struct {
+	ID          int64  `json:"id"`
+	ServerID    int64  `json:"server_id,omitempty"`
+	RanAs       string `json:"ran_as,omitempty"`
+	ServerName  string `json:"server_name,omitempty"`
+	Description string `json:"description,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
+}
+
 // RedirectRule represents a redirect rule on a site.
 type RedirectRule struct {
 	ID     int64  `json:"id"`

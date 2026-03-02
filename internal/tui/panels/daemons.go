@@ -240,6 +240,22 @@ func (p DaemonsPanel) View(width, height int, focused bool) string {
 		Render(title + "\n" + content)
 }
 
+// Column widths for daemons table.
+const (
+	daemonColUserWidth  = 8
+	daemonColProcsWidth = 8
+)
+
+const daemonTableOverhead = 2 + colStatusWidth + 2 + 2 + daemonColUserWidth + 2 + daemonColProcsWidth + 4
+
+func daemonCmdWidth(maxWidth int) int {
+	w := maxWidth - daemonTableOverhead
+	if w < 10 {
+		w = 10
+	}
+	return w
+}
+
 func (p DaemonsPanel) renderList(width, height int) string {
 	var lines []string
 
@@ -248,7 +264,9 @@ func (p DaemonsPanel) renderList(width, height int) string {
 	} else if len(p.daemons) == 0 {
 		lines = append(lines, theme.NormalItemStyle.Render("No daemons found"))
 	} else {
-		visibleHeight := height - 1
+		lines = append(lines, p.renderDaemonHeader(width))
+
+		visibleHeight := height - 2
 		if visibleHeight < 1 {
 			visibleHeight = 1
 		}
@@ -257,7 +275,7 @@ func (p DaemonsPanel) renderList(width, height int) string {
 			startIdx = p.cursor - visibleHeight + 1
 		}
 
-		for i := startIdx; i < len(p.daemons) && len(lines) < visibleHeight; i++ {
+		for i := startIdx; i < len(p.daemons) && len(lines)-1 < visibleHeight; i++ {
 			d := p.daemons[i]
 			line := p.renderDaemonLine(d, i, width)
 			lines = append(lines, line)
@@ -271,8 +289,23 @@ func (p DaemonsPanel) renderList(width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
+func (p DaemonsPanel) renderDaemonHeader(maxWidth int) string {
+	cmdWidth := daemonCmdWidth(maxWidth)
+	line := fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s",
+		colStatusWidth, "STATUS",
+		cmdWidth, "COMMAND",
+		daemonColUserWidth, "USER",
+		daemonColProcsWidth, "PROCS",
+	)
+	return theme.Truncate(headerStyle.Render(line), maxWidth)
+}
+
 func (p DaemonsPanel) renderDaemonLine(d forge.Daemon, idx, maxWidth int) string {
 	icon := statusIcon(d.Status)
+	statusText := d.Status
+	if statusText == "" {
+		statusText = "unknown"
+	}
 
 	command := d.Command
 	if command == "" {
@@ -283,35 +316,31 @@ func (p DaemonsPanel) renderDaemonLine(d forge.Daemon, idx, maxWidth int) string
 	if user == "" {
 		user = "forge"
 	}
-	procs := fmt.Sprintf("%d procs", d.Processes)
-	statusStr := fmt.Sprintf(" [%s]", d.Status)
 
-	// Leave room for: cursor(2) + icon(2) + user(~8) + procs(~8) + status(~14) + spacing(8)
-	overhead := 42
-	cmdWidth := maxWidth - overhead
-	if cmdWidth < 10 {
-		cmdWidth = 10
-	}
+	procs := fmt.Sprintf("%d", d.Processes)
+
+	cmdWidth := daemonCmdWidth(maxWidth)
 	command = truncatePlain(command, cmdWidth)
 
-	userStr := fmt.Sprintf("%-8s", truncatePlain(user, 8))
+	statusPad := colStatusWidth - 2
+	statusStr := icon + " " + fmt.Sprintf("%-*s", statusPad, truncatePlain(statusText, statusPad))
+	userStr := fmt.Sprintf("%-*s", daemonColUserWidth, truncatePlain(user, daemonColUserWidth))
+	procsStr := fmt.Sprintf("%-*s", daemonColProcsWidth, procs)
 
 	if idx == p.cursor {
 		line := theme.CursorStyle.Render("> ") +
-			icon + " " +
-			theme.SelectedItemStyle.Render(command) +
+			statusStr +
+			"  " + theme.SelectedItemStyle.Render(fmt.Sprintf("%-*s", cmdWidth, command)) +
 			"  " + theme.NormalItemStyle.Render(userStr) +
-			"  " + theme.NormalItemStyle.Render(procs) +
-			"  " + theme.NormalItemStyle.Render(statusStr)
+			"  " + theme.NormalItemStyle.Render(procsStr)
 		return theme.Truncate(line, maxWidth)
 	}
 
 	line := "  " +
-		icon + " " +
-		theme.NormalItemStyle.Render(command) +
+		statusStr +
+		"  " + theme.NormalItemStyle.Render(fmt.Sprintf("%-*s", cmdWidth, command)) +
 		"  " + theme.NormalItemStyle.Render(userStr) +
-		"  " + theme.NormalItemStyle.Render(procs) +
-		"  " + theme.NormalItemStyle.Render(statusStr)
+		"  " + theme.NormalItemStyle.Render(procsStr)
 	return theme.Truncate(line, maxWidth)
 }
 

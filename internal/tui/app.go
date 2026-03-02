@@ -59,6 +59,7 @@ type App struct {
 	sshKeysPanel      panels.SSHKeysPanel
 	commandsPanel     panels.CommandsPanel
 	logsPanel         panels.LogsPanel
+	eventsPanel       panels.EventsPanel
 	gitPanel          panels.GitPanel
 	domainsPanel      panels.DomainsPanel
 
@@ -268,6 +269,12 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case panels.DeploymentsLoadedMsg:
 		p, cmd := m.deploymentsPanel.Update(msg)
 		m.deploymentsPanel = p.(panels.DeploymentsPanel)
+		return m, cmd
+
+	// Events panel messages.
+	case panels.EventsLoadedMsg:
+		p, cmd := m.eventsPanel.Update(msg)
+		m.eventsPanel = p.(panels.EventsPanel)
 		return m, cmd
 
 	// User pressed Enter on a deployment to view output.
@@ -806,10 +813,6 @@ func (m App) handleTreeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Site-level action keys.
 	if !onServer && m.selectedSite != nil && m.selectedSrv != nil {
 		switch {
-		case key.Matches(msg, m.siteActKeys.Deploy):
-			c := components.NewConfirm("deploy", "Deploy site now?")
-			m.confirm = &c
-			return m, nil
 		case key.Matches(msg, m.siteActKeys.SSH):
 			cmd := m.sshCmd()
 			if cmd != nil {
@@ -945,9 +948,14 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.switchToTab(9)
 	}
 
-	// If the deployments panel is active, handle deployment-specific keys.
-	if m.activeTab == 1 && m.selectedSite != nil {
-		return m.handleDeploymentsKey(msg)
+	// Tab 1: Deploy (site) or Events (server).
+	if m.activeTab == 1 {
+		if m.selectedSite != nil {
+			return m.handleDeploymentsKey(msg)
+		}
+		if m.selectedSrv != nil {
+			return m.handleEventsKey(msg)
+		}
 	}
 
 	// If the environment panel is active, delegate keys.
@@ -1073,7 +1081,9 @@ func (m App) initTabPanel(tab int, serverID, siteID int64) (tea.Model, tea.Cmd) 
 	switch tab {
 	case 1:
 		if siteID == 0 {
-			return m, nil
+			// Server context: Events.
+			m.eventsPanel = panels.NewEventsPanel(m.forge, serverID)
+			return m, m.eventsPanel.LoadEvents()
 		}
 		m.showDeployScript = false
 		m.deploymentsPanel = panels.NewDeploymentsPanel(m.forge, serverID, siteID)
@@ -1176,6 +1186,13 @@ func (m App) handleDeploymentsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Delegate navigation and other keys to the deployments panel.
 	p, cmd := m.deploymentsPanel.Update(msg)
 	m.deploymentsPanel = p.(panels.DeploymentsPanel)
+	return m, cmd
+}
+
+// handleEventsKey handles keys specific to the events panel tab.
+func (m App) handleEventsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	p, cmd := m.eventsPanel.Update(msg)
+	m.eventsPanel = p.(panels.EventsPanel)
 	return m, cmd
 }
 
@@ -1708,6 +1725,8 @@ func (m App) renderDetailPanel(width, height int) string {
 
 		var sectionPanel string
 		switch m.activeTab {
+		case 1:
+			sectionPanel = m.eventsPanel.View(width, sectionHeight, focused)
 		case 3:
 			if m.showDBUsers {
 				sectionPanel = m.dbUsersPanel.View(width, sectionHeight, focused)
@@ -1759,7 +1778,7 @@ func (m App) renderTabBar(width int) string {
 }
 
 // serverTabNums lists which activeTab values correspond to server-level panels.
-var serverTabNums = map[int]bool{3: true, 6: true, 7: true, 8: true, 9: true}
+var serverTabNums = map[int]bool{1: true, 3: true, 6: true, 7: true, 8: true, 9: true}
 
 // renderServerTabBar renders the server-level tab bar.
 func (m App) renderServerTabBar(width int) string {
@@ -1767,7 +1786,7 @@ func (m App) renderServerTabBar(width int) string {
 		num  int
 		name string
 	}{
-		{0, "Info"}, {3, "DB"}, {6, "Daemons"}, {7, "Firewall"}, {8, "Jobs"}, {9, "SSH Keys"},
+		{0, "Info"}, {1, "Events"}, {3, "DB"}, {6, "Daemons"}, {7, "Firewall"}, {8, "Jobs"}, {9, "SSH Keys"},
 	}
 
 	// If the active tab isn't a server-level tab, highlight Info.
@@ -1809,6 +1828,8 @@ func (m App) renderFooter() string {
 			helpBindings = m.deployScriptPanel.HelpBindings()
 		} else if m.selectedSite != nil && m.activeTab == 1 {
 			helpBindings = m.deploymentsPanel.HelpBindings()
+		} else if m.selectedSite == nil && m.activeTab == 1 {
+			helpBindings = m.eventsPanel.HelpBindings()
 		} else if m.selectedSite != nil && m.activeTab == 2 {
 			helpBindings = m.environmentPanel.HelpBindings()
 		} else if m.activeTab == 3 && m.showDBUsers {

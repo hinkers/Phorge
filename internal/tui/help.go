@@ -267,7 +267,6 @@ func helpSections() []helpSection {
 		{
 			title: "Site Actions",
 			bindings: []helpEntry{
-				{"d", "Deploy"},
 				{"e", "Edit env/script"},
 				{"s", "SSH"},
 				{"D", "Set/clear default"},

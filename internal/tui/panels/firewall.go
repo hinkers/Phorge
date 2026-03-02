@@ -214,6 +214,23 @@ func (p FirewallPanel) View(width, height int, focused bool) string {
 		Render(title + "\n" + content)
 }
 
+// Column widths for firewall table.
+const (
+	fwColPortWidth = 6
+	fwColIPWidth   = 15
+	fwColTypeWidth = 6
+)
+
+const fwTableOverhead = 2 + colStatusWidth + 2 + 2 + fwColPortWidth + 2 + fwColIPWidth + 2 + fwColTypeWidth + 4
+
+func fwNameWidth(maxWidth int) int {
+	w := maxWidth - fwTableOverhead
+	if w < 8 {
+		w = 8
+	}
+	return w
+}
+
 func (p FirewallPanel) renderList(width, height int) string {
 	var lines []string
 
@@ -222,7 +239,9 @@ func (p FirewallPanel) renderList(width, height int) string {
 	} else if len(p.rules) == 0 {
 		lines = append(lines, theme.NormalItemStyle.Render("No firewall rules found"))
 	} else {
-		visibleHeight := height - 1
+		lines = append(lines, p.renderRuleHeader(width))
+
+		visibleHeight := height - 2
 		if visibleHeight < 1 {
 			visibleHeight = 1
 		}
@@ -231,7 +250,7 @@ func (p FirewallPanel) renderList(width, height int) string {
 			startIdx = p.cursor - visibleHeight + 1
 		}
 
-		for i := startIdx; i < len(p.rules) && len(lines) < visibleHeight; i++ {
+		for i := startIdx; i < len(p.rules) && len(lines)-1 < visibleHeight; i++ {
 			r := p.rules[i]
 			line := p.renderRuleLine(r, i, width)
 			lines = append(lines, line)
@@ -245,8 +264,24 @@ func (p FirewallPanel) renderList(width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
+func (p FirewallPanel) renderRuleHeader(maxWidth int) string {
+	nameW := fwNameWidth(maxWidth)
+	line := fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s  %-*s",
+		colStatusWidth, "STATUS",
+		nameW, "NAME",
+		fwColPortWidth, "PORT",
+		fwColIPWidth, "IP",
+		fwColTypeWidth, "TYPE",
+	)
+	return theme.Truncate(headerStyle.Render(line), maxWidth)
+}
+
 func (p FirewallPanel) renderRuleLine(r forge.FirewallRule, idx, maxWidth int) string {
 	icon := statusIcon(r.Status)
+	statusText := r.Status
+	if statusText == "" {
+		statusText = "unknown"
+	}
 
 	name := r.Name
 	if name == "" {
@@ -261,38 +296,32 @@ func (p FirewallPanel) renderRuleLine(r forge.FirewallRule, idx, maxWidth int) s
 	if ruleType == "" {
 		ruleType = "allow"
 	}
-	statusStr := fmt.Sprintf(" [%s]", r.Status)
 
-	// Leave room for: cursor(2) + icon(2) + port(~8) + ip(~16) + type(~6) + status(~14) + spacing(10)
-	overhead := 58
-	nameWidth := maxWidth - overhead
-	if nameWidth < 8 {
-		nameWidth = 8
-	}
-	name = truncatePlain(name, nameWidth)
+	nameW := fwNameWidth(maxWidth)
+	name = truncatePlain(name, nameW)
 
-	portStr := fmt.Sprintf("%-6s", truncatePlain(port, 6))
-	ipStr := fmt.Sprintf("%-15s", truncatePlain(ip, 15))
-	typeStr := fmt.Sprintf("%-5s", truncatePlain(ruleType, 5))
+	statusPad := colStatusWidth - 2
+	statusStr := icon + " " + fmt.Sprintf("%-*s", statusPad, truncatePlain(statusText, statusPad))
+	portStr := fmt.Sprintf("%-*s", fwColPortWidth, truncatePlain(port, fwColPortWidth))
+	ipStr := fmt.Sprintf("%-*s", fwColIPWidth, truncatePlain(ip, fwColIPWidth))
+	typeStr := fmt.Sprintf("%-*s", fwColTypeWidth, truncatePlain(ruleType, fwColTypeWidth))
 
 	if idx == p.cursor {
 		line := theme.CursorStyle.Render("> ") +
-			icon + " " +
-			theme.SelectedItemStyle.Render(name) +
+			statusStr +
+			"  " + theme.SelectedItemStyle.Render(fmt.Sprintf("%-*s", nameW, name)) +
 			"  " + theme.NormalItemStyle.Render(portStr) +
 			"  " + theme.NormalItemStyle.Render(ipStr) +
-			"  " + theme.NormalItemStyle.Render(typeStr) +
-			"  " + theme.NormalItemStyle.Render(statusStr)
+			"  " + theme.NormalItemStyle.Render(typeStr)
 		return theme.Truncate(line, maxWidth)
 	}
 
 	line := "  " +
-		icon + " " +
-		theme.NormalItemStyle.Render(name) +
+		statusStr +
+		"  " + theme.NormalItemStyle.Render(fmt.Sprintf("%-*s", nameW, name)) +
 		"  " + theme.NormalItemStyle.Render(portStr) +
 		"  " + theme.NormalItemStyle.Render(ipStr) +
-		"  " + theme.NormalItemStyle.Render(typeStr) +
-		"  " + theme.NormalItemStyle.Render(statusStr)
+		"  " + theme.NormalItemStyle.Render(typeStr)
 	return theme.Truncate(line, maxWidth)
 }
 
