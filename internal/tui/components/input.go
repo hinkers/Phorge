@@ -48,6 +48,7 @@ func NewInputWide(id, label, placeholder string) Input {
 	ti.Placeholder = placeholder
 	ti.Prompt = "  "
 	ti.CharLimit = 0 // unlimited
+	ti.SetWidth(50)
 	ti.Focus()
 
 	return Input{
