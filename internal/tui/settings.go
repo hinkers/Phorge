@@ -227,7 +227,7 @@ func (s SettingsModal) View(width, height int) string {
 			displayValue = "(not set)"
 		}
 		if f.mask && len(displayValue) > 8 {
-			displayValue = displayValue[:4] + strings.Repeat("*", len(displayValue)-8) + displayValue[len(displayValue)-4:]
+			displayValue = displayValue[:4] + "****" + displayValue[len(displayValue)-4:]
 		}
 
 		var line string
