@@ -629,6 +629,10 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case components.InputCancelled:
 		m.inputDialog = nil
+		// Re-open settings modal if the cancelled input was a settings field.
+		if strings.HasPrefix(msg.ID, "settings-") {
+			m.settingsModal = m.settingsModal.Open(m.config)
+		}
 		return m, nil
 
 	// Panel-level errors (from panel API commands).
@@ -667,7 +671,8 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.clearToastAfter(3 * time.Second)
 
 	case settingsEditMsg:
-		// Open an input dialog for the selected settings field.
+		// Close settings modal so the input dialog can receive key events.
+		m.settingsModal = m.settingsModal.Close()
 		i := components.NewInputWide(msg.inputID, msg.label+":", msg.current)
 		m.inputDialog = &i
 		return m, nil
@@ -1463,9 +1468,12 @@ func (m App) handleSSHKeysKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// Expand ~ in path.
 		if strings.HasPrefix(keyPath, "~/") || keyPath == "~" {
 			home, err := os.UserHomeDir()
-			if err == nil {
-				keyPath = filepath.Join(home, keyPath[2:])
+			if err != nil {
+				m.toast = fmt.Sprintf("Cannot resolve home directory: %v", err)
+				m.toastIsErr = true
+				return m, m.clearToastAfter(3 * time.Second)
 			}
+			keyPath = filepath.Join(home, keyPath[2:])
 		}
 		content, err := os.ReadFile(keyPath)
 		if err != nil {
@@ -1580,6 +1588,8 @@ func (m App) handleInputResult(msg components.InputResult) (tea.Model, tea.Cmd) 
 
 	case "settings-api-key", "settings-ssh-user", "settings-editor", "settings-default-ssh-key":
 		m.settingsModal = m.settingsModal.ApplyValue(msg.ID, value)
+		// Re-open settings modal after inline edit.
+		m.settingsModal = m.settingsModal.Open(m.config)
 		// Save config to disk.
 		if err := m.config.Save(); err != nil {
 			m.toast = fmt.Sprintf("Save error: %v", err)
