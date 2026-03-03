@@ -10,6 +10,7 @@ type GlobalKeyMap struct {
 	SFTP     key.Binding
 	Database key.Binding
 	Help     key.Binding
+	Settings key.Binding
 	Tab      key.Binding
 	ShiftTab key.Binding
 }
@@ -40,6 +41,10 @@ func DefaultGlobalKeyMap() GlobalKeyMap {
 		Help: key.NewBinding(
 			key.WithKeys("?"),
 			key.WithHelp("?", "help"),
+		),
+		Settings: key.NewBinding(
+			key.WithKeys("ctrl+o"),
+			key.WithHelp("ctrl+o", "settings"),
 		),
 		Tab: key.NewBinding(
 			key.WithKeys("tab"),

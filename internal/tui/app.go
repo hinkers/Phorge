@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -98,6 +99,9 @@ type App struct {
 	// Help modal overlay.
 	helpModal HelpModal
 
+	// Settings modal overlay.
+	settingsModal SettingsModal
+
 	// Output polling state for auto-updating deployment/command output.
 	outputPoll outputPollState
 
@@ -138,7 +142,8 @@ func NewApp(cfg *config.Config) App {
 		outputPanel: panels.NewOutputPanel(),
 		serverInfo:  panels.NewServerInfo(),
 		siteInfo:    panels.NewSiteInfo(),
-		helpModal:   NewHelpModal(),
+		helpModal:     NewHelpModal(),
+		settingsModal: NewSettingsModal(),
 		globalKeys:    DefaultGlobalKeyMap(),
 		navKeys:       DefaultNavKeyMap(),
 		sectionKeys:   DefaultSectionKeyMap(),
@@ -159,6 +164,15 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if _, ok := msg.(tea.KeyPressMsg); ok {
 			var cmd tea.Cmd
 			m.helpModal, cmd = m.helpModal.Update(msg)
+			return m, cmd
+		}
+	}
+
+	// Settings modal intercepts all keys when active.
+	if m.settingsModal.Active() {
+		if _, ok := msg.(tea.KeyPressMsg); ok {
+			var cmd tea.Cmd
+			m.settingsModal, cmd = m.settingsModal.Update(msg)
 			return m, cmd
 		}
 	}
@@ -652,6 +666,44 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.clearToastAfter(3 * time.Second)
 
+	case settingsEditMsg:
+		// Open an input dialog for the selected settings field.
+		i := components.NewInputWide(msg.inputID, msg.label+":", msg.current)
+		m.inputDialog = &i
+		return m, nil
+
+	case settingsOpenEditorMsg:
+		// Open config.toml in the external editor.
+		editor := m.config.Editor.Command
+		if editor == "" {
+			editor = "vim"
+		}
+		path := config.DefaultPath()
+		c := exec.Command(editor, path)
+		return m, tea.ExecProcess(c, func(err error) tea.Msg {
+			return settingsEditorDoneMsg{err: err}
+		})
+
+	case settingsEditorDoneMsg:
+		if msg.err != nil {
+			m.toast = fmt.Sprintf("Editor error: %v", msg.err)
+			m.toastIsErr = true
+			return m, m.clearToastAfter(3 * time.Second)
+		}
+		// Reload config from disk.
+		newCfg, err := config.Load()
+		if err != nil {
+			m.toast = fmt.Sprintf("Config reload error: %v", err)
+			m.toastIsErr = true
+			return m, m.clearToastAfter(3 * time.Second)
+		}
+		m.config = newCfg
+		m.forge = forge.NewClient(newCfg.Forge.APIKey)
+		m.settingsModal = m.settingsModal.Open(m.config)
+		m.toast = "Config reloaded"
+		m.toastIsErr = false
+		return m, m.clearToastAfter(3 * time.Second)
+
 	case errMsg:
 		m.loading = false
 		m.treePanel = m.treePanel.SetLoading(false)
@@ -731,6 +783,9 @@ func (m App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case key.Matches(msg, m.globalKeys.Help):
 		m.helpModal = m.helpModal.Toggle()
+		return m, nil
+	case key.Matches(msg, m.globalKeys.Settings):
+		m.settingsModal = m.settingsModal.Open(m.config)
 		return m, nil
 	case key.Matches(msg, m.globalKeys.Tab):
 		m.focus = (m.focus + 1) % panelCount
@@ -1125,7 +1180,7 @@ func (m App) initTabPanel(tab int, serverID, siteID int64) (tea.Model, tea.Cmd) 
 	case 7:
 		if siteID > 0 {
 			// Site context: Logs (site-level).
-			m.logsPanel = panels.NewLogsPanel(m.forge, serverID, siteID)
+			m.logsPanel = panels.NewLogsPanel(m.forge, serverID, siteID, m.config.Editor.Command)
 			return m, m.logsPanel.LoadLogs()
 		}
 		// Server context: Firewall.
@@ -1491,6 +1546,22 @@ func (m App) handleInputResult(msg components.InputResult) (tea.Model, tea.Cmd) 
 		keyContent := m.pendingInputValue
 		m.pendingInputValue = ""
 		return m, m.sshKeysPanel.CreateKey(value, keyContent, "forge")
+
+	case "settings-api-key", "settings-ssh-user", "settings-editor", "settings-default-ssh-key":
+		m.settingsModal = m.settingsModal.ApplyValue(msg.ID, value)
+		// Save config to disk.
+		if err := m.config.Save(); err != nil {
+			m.toast = fmt.Sprintf("Save error: %v", err)
+			m.toastIsErr = true
+			return m, m.clearToastAfter(3 * time.Second)
+		}
+		// If API key changed, recreate the client.
+		if msg.ID == "settings-api-key" {
+			m.forge = forge.NewClient(m.config.Forge.APIKey)
+		}
+		m.toast = "Settings saved"
+		m.toastIsErr = false
+		return m, m.clearToastAfter(3 * time.Second)
 	}
 
 	return m, nil
@@ -1650,6 +1721,14 @@ func (m App) View() tea.View {
 	// Overlay the help modal on top of the existing UI.
 	if m.helpModal.Active() {
 		box := m.helpModal.View(m.width, m.height)
+		if box != "" {
+			content = overlayCenter(box, content, m.width, m.height)
+		}
+	}
+
+	// Overlay the settings modal on top of the existing UI.
+	if m.settingsModal.Active() {
+		box := m.settingsModal.View(m.width, m.height)
 		if box != "" {
 			content = overlayCenter(box, content, m.width, m.height)
 		}
