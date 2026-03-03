@@ -251,6 +251,7 @@ func helpSections() []helpSection {
 				{"Ctrl+F", "SFTP via termscp"},
 				{"Ctrl+D", "Database tunnel"},
 				{"Ctrl+R", "Refresh"},
+				{"Ctrl+O", "Settings"},
 				{"?", "Toggle help"},
 				{"q", "Quit"},
 			},

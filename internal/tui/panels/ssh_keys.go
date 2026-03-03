@@ -297,6 +297,7 @@ func (p SSHKeysPanel) HelpBindings() []HelpBinding {
 		{Key: "j/k", Desc: "navigate"},
 		{Key: "c", Desc: "create"},
 		{Key: "x", Desc: "delete"},
+		{Key: "i", Desc: "install default key"},
 		{Key: "g/G", Desc: "top/bottom"},
 		{Key: "esc", Desc: "back"},
 		{Key: "tab", Desc: "switch panel"},
