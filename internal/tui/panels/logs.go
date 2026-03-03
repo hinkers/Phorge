@@ -2,6 +2,8 @@ package panels
 
 import (
 	"context"
+	"os"
+	"os/exec"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -19,6 +21,11 @@ type LogsLoadedMsg struct {
 	Content string
 }
 
+// logEditorDoneMsg is sent after the external editor exits for the log viewer.
+type logEditorDoneMsg struct {
+	err error
+}
+
 // LogsPanel shows log content in a scrollable viewport.
 // If siteID > 0 it shows site logs, otherwise server logs.
 type LogsPanel struct {
@@ -29,6 +36,7 @@ type LogsPanel struct {
 	content string
 	scrollY int
 	loading bool
+	editor  string // editor command from config
 
 	// Keybindings
 	up      key.Binding
@@ -36,15 +44,20 @@ type LogsPanel struct {
 	refresh key.Binding
 	home    key.Binding
 	end     key.Binding
+	edit    key.Binding
 }
 
 // NewLogsPanel creates a new LogsPanel.
-func NewLogsPanel(client *forge.Client, serverID, siteID int64) LogsPanel {
+func NewLogsPanel(client *forge.Client, serverID, siteID int64, editor string) LogsPanel {
+	if editor == "" {
+		editor = "vim"
+	}
 	return LogsPanel{
 		client:   client,
 		serverID: serverID,
 		siteID:   siteID,
 		loading:  true,
+		editor:   editor,
 		up: key.NewBinding(
 			key.WithKeys("k", "up"),
 			key.WithHelp("k/up", "scroll up"),
@@ -64,6 +77,10 @@ func NewLogsPanel(client *forge.Client, serverID, siteID int64) LogsPanel {
 		end: key.NewBinding(
 			key.WithKeys("G", "end"),
 			key.WithHelp("G", "bottom"),
+		),
+		edit: key.NewBinding(
+			key.WithKeys("e"),
+			key.WithHelp("e", "open in editor"),
 		),
 	}
 }
@@ -97,6 +114,14 @@ func (p LogsPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 		p.scrollY = 0
 		return p, nil
 
+	case logEditorDoneMsg:
+		if msg.err != nil {
+			return p, func() tea.Msg {
+				return PanelErrMsg{Err: msg.err}
+			}
+		}
+		return p, nil
+
 	case tea.KeyPressMsg:
 		return p.handleKey(msg)
 	}
@@ -128,6 +153,32 @@ func (p LogsPanel) handleKey(msg tea.KeyPressMsg) (Panel, tea.Cmd) {
 	case key.Matches(msg, p.refresh):
 		p.loading = true
 		return p, p.LoadLogs()
+
+	case key.Matches(msg, p.edit):
+		if p.loading || p.content == "" {
+			return p, nil
+		}
+		tmpFile, err := os.CreateTemp("", "phorge-log-*.log")
+		if err != nil {
+			return p, func() tea.Msg {
+				return PanelErrMsg{Err: err}
+			}
+		}
+		if _, err := tmpFile.WriteString(p.content); err != nil {
+			tmpFile.Close()
+			os.Remove(tmpFile.Name())
+			return p, func() tea.Msg {
+				return PanelErrMsg{Err: err}
+			}
+		}
+		tmpFile.Close()
+		path := tmpFile.Name()
+
+		c := exec.Command(p.editor, path)
+		return p, tea.ExecProcess(c, func(err error) tea.Msg {
+			defer os.Remove(path)
+			return logEditorDoneMsg{err: err}
+		})
 	}
 
 	return p, nil
@@ -213,6 +264,7 @@ func (p LogsPanel) renderContent(width, height int) string {
 // HelpBindings returns the key hints for the logs panel.
 func (p LogsPanel) HelpBindings() []HelpBinding {
 	return []HelpBinding{
+		{Key: "e", Desc: "open in editor"},
 		{Key: "j/k", Desc: "scroll"},
 		{Key: "g/G", Desc: "top/bottom"},
 		{Key: "r", Desc: "refresh"},
