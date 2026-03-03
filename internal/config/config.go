@@ -22,8 +22,9 @@ type Config struct {
 
 // ForgeConfig holds Laravel Forge API settings.
 type ForgeConfig struct {
-	APIKey  string `toml:"api_key"`
-	SSHUser string `toml:"ssh_user"`
+	APIKey        string `toml:"api_key"`
+	SSHUser       string `toml:"ssh_user"`
+	DefaultSSHKey string `toml:"default_ssh_key,omitempty"`
 }
 
 // EditorConfig holds external editor settings.

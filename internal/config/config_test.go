@@ -200,6 +200,34 @@ func TestSaveCreatesDirectoryAndFile(t *testing.T) {
 	}
 }
 
+func TestDefaultSSHKeyRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	cfg := Default()
+	cfg.Forge.DefaultSSHKey = "~/.ssh/id_ed25519.pub"
+
+	if err := cfg.SaveTo(path); err != nil {
+		t.Fatalf("SaveTo: %v", err)
+	}
+
+	loaded, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+
+	if loaded.Forge.DefaultSSHKey != "~/.ssh/id_ed25519.pub" {
+		t.Errorf("DefaultSSHKey = %q, want %q", loaded.Forge.DefaultSSHKey, "~/.ssh/id_ed25519.pub")
+	}
+}
+
+func TestDefaultSSHKeyEmptyByDefault(t *testing.T) {
+	cfg := Default()
+	if cfg.Forge.DefaultSSHKey != "" {
+		t.Errorf("Default DefaultSSHKey = %q, want empty", cfg.Forge.DefaultSSHKey)
+	}
+}
+
 func TestLoadFromInvalidTOML(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.toml")
