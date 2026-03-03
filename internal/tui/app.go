@@ -1452,6 +1452,37 @@ func (m App) handleDomainsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // handleSSHKeysKey handles keys specific to the SSH keys panel tab.
 func (m App) handleSSHKeysKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("i"))):
+		// Install default SSH key from config.
+		keyPath := m.config.Forge.DefaultSSHKey
+		if keyPath == "" {
+			m.toast = "No default SSH key configured (ctrl+o to set)"
+			m.toastIsErr = true
+			return m, m.clearToastAfter(3 * time.Second)
+		}
+		// Expand ~ in path.
+		if strings.HasPrefix(keyPath, "~/") || keyPath == "~" {
+			home, err := os.UserHomeDir()
+			if err == nil {
+				keyPath = filepath.Join(home, keyPath[2:])
+			}
+		}
+		content, err := os.ReadFile(keyPath)
+		if err != nil {
+			m.toast = fmt.Sprintf("Cannot read key: %v", err)
+			m.toastIsErr = true
+			return m, m.clearToastAfter(3 * time.Second)
+		}
+		keyContent := strings.TrimSpace(string(content))
+		if keyContent == "" {
+			m.toast = "Key file is empty"
+			m.toastIsErr = true
+			return m, m.clearToastAfter(3 * time.Second)
+		}
+		name := filepath.Base(keyPath)
+		name = strings.TrimSuffix(name, ".pub")
+		return m, m.sshKeysPanel.CreateKey(name, keyContent, "forge")
+
 	case key.Matches(msg, key.NewBinding(key.WithKeys("c"))):
 		i := components.NewInputWide("create-sshkey-path", "Path to public key (or paste key directly):", "~/.ssh/id_rsa.pub")
 		m.inputDialog = &i
