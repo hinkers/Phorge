@@ -21,9 +21,9 @@ type LogsLoadedMsg struct {
 	Content string
 }
 
-// logEditorDoneMsg is sent after the external editor exits for the log viewer.
-type logEditorDoneMsg struct {
-	err error
+// LogEditorDoneMsg is sent after the external editor exits for the log viewer.
+type LogEditorDoneMsg struct {
+	Err error
 }
 
 // LogsPanel shows log content in a scrollable viewport.
@@ -114,10 +114,10 @@ func (p LogsPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 		p.scrollY = 0
 		return p, nil
 
-	case logEditorDoneMsg:
-		if msg.err != nil {
+	case LogEditorDoneMsg:
+		if msg.Err != nil {
 			return p, func() tea.Msg {
-				return PanelErrMsg{Err: msg.err}
+				return PanelErrMsg{Err: msg.Err}
 			}
 		}
 		return p, nil
@@ -177,7 +177,7 @@ func (p LogsPanel) handleKey(msg tea.KeyPressMsg) (Panel, tea.Cmd) {
 		c := exec.Command(p.editor, path)
 		return p, tea.ExecProcess(c, func(err error) tea.Msg {
 			defer os.Remove(path)
-			return logEditorDoneMsg{err: err}
+			return LogEditorDoneMsg{Err: err}
 		})
 	}
 

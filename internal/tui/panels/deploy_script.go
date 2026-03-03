@@ -26,11 +26,11 @@ type ScriptSavedMsg struct {
 	Err error
 }
 
-// scriptEditorDoneMsg is sent after the external editor exits for the deploy script.
-type scriptEditorDoneMsg struct {
-	newContent string
-	changed    bool
-	err        error
+// ScriptEditorDoneMsg is sent after the external editor exits for the deploy script.
+type ScriptEditorDoneMsg struct {
+	NewContent string
+	Changed    bool
+	Err        error
 }
 
 // DeployScriptPanel shows the deployment script with option to edit in an
@@ -127,15 +127,15 @@ func (p DeployScriptPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 		p.scrollY = 0
 		return p, nil
 
-	case scriptEditorDoneMsg:
-		if msg.err != nil {
+	case ScriptEditorDoneMsg:
+		if msg.Err != nil {
 			return p, func() tea.Msg {
-				return PanelErrMsg{Err: msg.err}
+				return PanelErrMsg{Err: msg.Err}
 			}
 		}
-		if msg.changed {
-			p.content = msg.newContent
-			return p, p.saveScript(msg.newContent)
+		if msg.Changed {
+			p.content = msg.NewContent
+			return p, p.saveScript(msg.NewContent)
 		}
 		return p, nil
 
@@ -198,15 +198,15 @@ func (p DeployScriptPanel) handleKey(msg tea.KeyPressMsg) (Panel, tea.Cmd) {
 		return p, tea.ExecProcess(c, func(err error) tea.Msg {
 			defer os.Remove(path)
 			if err != nil {
-				return scriptEditorDoneMsg{err: err}
+				return ScriptEditorDoneMsg{Err: err}
 			}
 			newContent, readErr := os.ReadFile(path)
 			if readErr != nil {
-				return scriptEditorDoneMsg{err: readErr}
+				return ScriptEditorDoneMsg{Err: readErr}
 			}
-			return scriptEditorDoneMsg{
-				newContent: string(newContent),
-				changed:    string(newContent) != original,
+			return ScriptEditorDoneMsg{
+				NewContent: string(newContent),
+				Changed:    string(newContent) != original,
 			}
 		})
 	}

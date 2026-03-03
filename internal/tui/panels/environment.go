@@ -26,11 +26,11 @@ type EnvSavedMsg struct {
 	Err error
 }
 
-// envEditorDoneMsg is sent after the external editor exits for the environment file.
-type envEditorDoneMsg struct {
-	newContent string
-	changed    bool
-	err        error
+// EnvEditorDoneMsg is sent after the external editor exits for the environment file.
+type EnvEditorDoneMsg struct {
+	NewContent string
+	Changed    bool
+	Err        error
 }
 
 // EnvironmentPanel shows the .env file content with option to edit in an
@@ -127,15 +127,15 @@ func (p EnvironmentPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 		p.scrollY = 0
 		return p, nil
 
-	case envEditorDoneMsg:
-		if msg.err != nil {
+	case EnvEditorDoneMsg:
+		if msg.Err != nil {
 			return p, func() tea.Msg {
-				return PanelErrMsg{Err: msg.err}
+				return PanelErrMsg{Err: msg.Err}
 			}
 		}
-		if msg.changed {
-			p.content = msg.newContent
-			return p, p.saveEnv(msg.newContent)
+		if msg.Changed {
+			p.content = msg.NewContent
+			return p, p.saveEnv(msg.NewContent)
 		}
 		return p, nil
 
@@ -198,15 +198,15 @@ func (p EnvironmentPanel) handleKey(msg tea.KeyPressMsg) (Panel, tea.Cmd) {
 		return p, tea.ExecProcess(c, func(err error) tea.Msg {
 			defer os.Remove(path)
 			if err != nil {
-				return envEditorDoneMsg{err: err}
+				return EnvEditorDoneMsg{Err: err}
 			}
 			newContent, readErr := os.ReadFile(path)
 			if readErr != nil {
-				return envEditorDoneMsg{err: readErr}
+				return EnvEditorDoneMsg{Err: readErr}
 			}
-			return envEditorDoneMsg{
-				newContent: string(newContent),
-				changed:    string(newContent) != original,
+			return EnvEditorDoneMsg{
+				NewContent: string(newContent),
+				Changed:    string(newContent) != original,
 			}
 		})
 	}

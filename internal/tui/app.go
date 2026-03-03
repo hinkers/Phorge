@@ -368,6 +368,11 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.deployScriptPanel = p.(panels.DeployScriptPanel)
 		return m, cmd
 
+	case panels.ScriptEditorDoneMsg:
+		p, cmd := m.deployScriptPanel.Update(msg)
+		m.deployScriptPanel = p.(panels.DeployScriptPanel)
+		return m, cmd
+
 	case panels.ScriptSavedMsg:
 		if msg.Err != nil {
 			m.toast = fmt.Sprintf("Script save failed: %v", msg.Err)
@@ -380,6 +385,11 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Environment panel messages.
 	case panels.EnvLoadedMsg:
+		p, cmd := m.environmentPanel.Update(msg)
+		m.environmentPanel = p.(panels.EnvironmentPanel)
+		return m, cmd
+
+	case panels.EnvEditorDoneMsg:
 		p, cmd := m.environmentPanel.Update(msg)
 		m.environmentPanel = p.(panels.EnvironmentPanel)
 		return m, cmd
@@ -599,6 +609,11 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Logs panel messages.
 	case panels.LogsLoadedMsg:
+		p, cmd := m.logsPanel.Update(msg)
+		m.logsPanel = p.(panels.LogsPanel)
+		return m, cmd
+
+	case panels.LogEditorDoneMsg:
 		p, cmd := m.logsPanel.Update(msg)
 		m.logsPanel = p.(panels.LogsPanel)
 		return m, cmd
