@@ -40,10 +40,12 @@ type DeployScriptPanel struct {
 	serverID int64
 	siteID   int64
 
-	content string // the script text
-	scrollY int    // scroll offset (line)
-	loading bool
-	editor  string // editor command from config
+	content     string // the script text
+	scrollY     int    // scroll offset (line)
+	loading     bool
+	saving      bool   // true while uploading changes
+	pendingEdit bool   // true if user pressed 'e' while loading
+	editor      string // editor command from config
 
 	// Keybindings
 	up   key.Binding
@@ -125,6 +127,10 @@ func (p DeployScriptPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 		p.content = msg.Content
 		p.loading = false
 		p.scrollY = 0
+		if p.pendingEdit {
+			p.pendingEdit = false
+			return p.openEditor()
+		}
 		return p, nil
 
 	case ScriptEditorDoneMsg:
@@ -135,12 +141,13 @@ func (p DeployScriptPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 		}
 		if msg.Changed {
 			p.content = msg.NewContent
+			p.saving = true
 			return p, p.saveScript(msg.NewContent)
 		}
 		return p, nil
 
 	case ScriptSavedMsg:
-		// The app layer will handle showing a toast based on this message.
+		p.saving = false
 		return p, nil
 
 	case tea.KeyPressMsg:
@@ -174,44 +181,49 @@ func (p DeployScriptPanel) handleKey(msg tea.KeyPressMsg) (Panel, tea.Cmd) {
 
 	case key.Matches(msg, p.edit):
 		if p.loading {
+			p.pendingEdit = true
 			return p, nil
 		}
-		// Write content to temp file synchronously (fast local I/O).
-		tmpFile, err := os.CreateTemp("", "phorge-deploy-*.sh")
-		if err != nil {
-			return p, func() tea.Msg {
-				return PanelErrMsg{Err: err}
-			}
-		}
-		if _, err := tmpFile.WriteString(p.content); err != nil {
-			tmpFile.Close()
-			os.Remove(tmpFile.Name())
-			return p, func() tea.Msg {
-				return PanelErrMsg{Err: err}
-			}
-		}
-		tmpFile.Close()
-		original := p.content
-		path := tmpFile.Name()
-
-		c := exec.Command(p.editor, path)
-		return p, tea.ExecProcess(c, func(err error) tea.Msg {
-			defer os.Remove(path)
-			if err != nil {
-				return ScriptEditorDoneMsg{Err: err}
-			}
-			newContent, readErr := os.ReadFile(path)
-			if readErr != nil {
-				return ScriptEditorDoneMsg{Err: readErr}
-			}
-			return ScriptEditorDoneMsg{
-				NewContent: string(newContent),
-				Changed:    string(newContent) != original,
-			}
-		})
+		return p.openEditor()
 	}
 
 	return p, nil
+}
+
+// openEditor writes content to a temp file and opens the external editor.
+func (p DeployScriptPanel) openEditor() (Panel, tea.Cmd) {
+	tmpFile, err := os.CreateTemp("", "phorge-deploy-*.sh")
+	if err != nil {
+		return p, func() tea.Msg {
+			return PanelErrMsg{Err: err}
+		}
+	}
+	if _, err := tmpFile.WriteString(p.content); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+		return p, func() tea.Msg {
+			return PanelErrMsg{Err: err}
+		}
+	}
+	tmpFile.Close()
+	original := p.content
+	path := tmpFile.Name()
+
+	c := exec.Command(p.editor, path)
+	return p, tea.ExecProcess(c, func(err error) tea.Msg {
+		defer os.Remove(path)
+		if err != nil {
+			return ScriptEditorDoneMsg{Err: err}
+		}
+		newContent, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return ScriptEditorDoneMsg{Err: readErr}
+		}
+		return ScriptEditorDoneMsg{
+			NewContent: string(newContent),
+			Changed:    string(newContent) != original,
+		}
+	})
 }
 
 // View renders the deploy script panel.
@@ -251,7 +263,14 @@ func (p DeployScriptPanel) renderContent(width, height int) string {
 		height = 1
 	}
 
+	if p.saving {
+		return theme.LoadingStyle.Render("Saving deploy script...")
+	}
+
 	if p.loading {
+		if p.pendingEdit {
+			return theme.LoadingStyle.Render("Loading deploy script (will open editor)...")
+		}
 		return theme.LoadingStyle.Render("Loading deploy script...")
 	}
 

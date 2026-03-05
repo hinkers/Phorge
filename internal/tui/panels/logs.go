@@ -33,10 +33,11 @@ type LogsPanel struct {
 	serverID int64
 	siteID   int64
 
-	content string
-	scrollY int
-	loading bool
-	editor  string // editor command from config
+	content     string
+	scrollY     int
+	loading     bool
+	pendingEdit bool   // true if user pressed 'e' while loading
+	editor      string // editor command from config
 
 	// Keybindings
 	up      key.Binding
@@ -112,6 +113,10 @@ func (p LogsPanel) Update(msg tea.Msg) (Panel, tea.Cmd) {
 		p.content = msg.Content
 		p.loading = false
 		p.scrollY = 0
+		if p.pendingEdit {
+			p.pendingEdit = false
+			return p.openEditor()
+		}
 		return p, nil
 
 	case LogEditorDoneMsg:
@@ -155,33 +160,42 @@ func (p LogsPanel) handleKey(msg tea.KeyPressMsg) (Panel, tea.Cmd) {
 		return p, p.LoadLogs()
 
 	case key.Matches(msg, p.edit):
-		if p.loading || p.content == "" {
+		if p.loading {
+			p.pendingEdit = true
 			return p, nil
 		}
-		tmpFile, err := os.CreateTemp("", "phorge-log-*.log")
-		if err != nil {
-			return p, func() tea.Msg {
-				return PanelErrMsg{Err: err}
-			}
+		if p.content == "" {
+			return p, nil
 		}
-		if _, err := tmpFile.WriteString(p.content); err != nil {
-			tmpFile.Close()
-			os.Remove(tmpFile.Name())
-			return p, func() tea.Msg {
-				return PanelErrMsg{Err: err}
-			}
-		}
-		tmpFile.Close()
-		path := tmpFile.Name()
-
-		c := exec.Command(p.editor, path)
-		return p, tea.ExecProcess(c, func(err error) tea.Msg {
-			defer os.Remove(path)
-			return LogEditorDoneMsg{Err: err}
-		})
+		return p.openEditor()
 	}
 
 	return p, nil
+}
+
+// openEditor writes content to a temp file and opens the external editor.
+func (p LogsPanel) openEditor() (Panel, tea.Cmd) {
+	tmpFile, err := os.CreateTemp("", "phorge-log-*.log")
+	if err != nil {
+		return p, func() tea.Msg {
+			return PanelErrMsg{Err: err}
+		}
+	}
+	if _, err := tmpFile.WriteString(p.content); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+		return p, func() tea.Msg {
+			return PanelErrMsg{Err: err}
+		}
+	}
+	tmpFile.Close()
+	path := tmpFile.Name()
+
+	c := exec.Command(p.editor, path)
+	return p, tea.ExecProcess(c, func(err error) tea.Msg {
+		defer os.Remove(path)
+		return LogEditorDoneMsg{Err: err}
+	})
 }
 
 // View renders the logs panel.
@@ -229,6 +243,9 @@ func (p LogsPanel) renderContent(width, height int) string {
 	}
 
 	if p.loading {
+		if p.pendingEdit {
+			return theme.LoadingStyle.Render("Loading logs (will open editor)...")
+		}
 		return theme.LoadingStyle.Render("Loading logs...")
 	}
 

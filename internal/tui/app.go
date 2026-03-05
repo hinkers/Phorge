@@ -371,6 +371,10 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case panels.ScriptEditorDoneMsg:
 		p, cmd := m.deployScriptPanel.Update(msg)
 		m.deployScriptPanel = p.(panels.DeployScriptPanel)
+		if msg.Changed {
+			m.toast = "Saving deploy script..."
+			m.toastIsErr = false
+		}
 		return m, cmd
 
 	case panels.ScriptSavedMsg:
@@ -392,6 +396,10 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case panels.EnvEditorDoneMsg:
 		p, cmd := m.environmentPanel.Update(msg)
 		m.environmentPanel = p.(panels.EnvironmentPanel)
+		if msg.Changed {
+			m.toast = "Saving environment..."
+			m.toastIsErr = false
+		}
 		return m, cmd
 
 	case panels.EnvSavedMsg:
