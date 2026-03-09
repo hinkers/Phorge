@@ -60,6 +60,9 @@ type TreePanel struct {
 	defaultServer string
 	defaultSite   string
 
+	// Nicknames maps "server\nsite" to nickname for display.
+	nicknames map[string]string
+
 	// Keybindings
 	up    key.Binding
 	down  key.Binding
@@ -193,6 +196,17 @@ func (t TreePanel) FindServerByName(name string) *forge.Server {
 	return nil
 }
 
+// FindServerByID returns the server with the given ID, or nil if not found.
+func (t TreePanel) FindServerByID(id int64) *forge.Server {
+	for _, srv := range t.servers {
+		if srv.ID == id {
+			s := srv
+			return &s
+		}
+	}
+	return nil
+}
+
 // SetDefaultServer sets the name of the default server for visual indicator.
 func (t TreePanel) SetDefaultServer(name string) TreePanel {
 	t.defaultServer = name
@@ -202,6 +216,12 @@ func (t TreePanel) SetDefaultServer(name string) TreePanel {
 // SetDefaultSite sets the name of the default site for visual indicator.
 func (t TreePanel) SetDefaultSite(name string) TreePanel {
 	t.defaultSite = name
+	return t
+}
+
+// SetNicknames sets the nickname display map. Keys are "server\nsite".
+func (t TreePanel) SetNicknames(m map[string]string) TreePanel {
+	t.nicknames = m
 	return t
 }
 
@@ -590,10 +610,13 @@ func (t TreePanel) renderNode(node TreeNode, idx, maxWidth int) string {
 			icon = "▼"
 		}
 
-		// Show * next to the default server.
+		// Show * next to the default server, and nickname if set.
 		suffix := ""
 		if t.defaultServer != "" && strings.EqualFold(node.Server.Name, t.defaultServer) {
 			suffix = " *"
+		}
+		if nick, ok := t.nicknames[node.Server.Name+"\n"]; ok {
+			suffix += " [" + nick + "]"
 		}
 
 		name := theme.Truncate(node.Server.Name+suffix, maxWidth-6)
@@ -615,10 +638,13 @@ func (t TreePanel) renderNode(node TreeNode, idx, maxWidth int) string {
 		siteName = node.Site.Name
 	}
 
-	// Show * next to the default site.
+	// Show * next to the default site, and nickname if set.
 	siteSuffix := ""
 	if t.defaultSite != "" && strings.EqualFold(siteName, t.defaultSite) {
 		siteSuffix = " *"
+	}
+	if nick, ok := t.nicknames[node.Server.Name+"\n"+siteName]; ok {
+		siteSuffix += " [" + nick + "]"
 	}
 
 	name := theme.Truncate(siteName+siteSuffix, maxWidth-8)
@@ -652,12 +678,14 @@ func (t TreePanel) HelpBindings() []HelpBinding {
 			HelpBinding{Key: "s", Desc: "SSH"},
 			HelpBinding{Key: "r", Desc: "reboot"},
 			HelpBinding{Key: "D", Desc: "set default"},
+			HelpBinding{Key: "n", Desc: "nickname"},
 		)
 	} else {
 		bindings = append(bindings,
 			HelpBinding{Key: "enter", Desc: "select → detail"},
 			HelpBinding{Key: "s", Desc: "SSH"},
 			HelpBinding{Key: "D", Desc: "set default"},
+			HelpBinding{Key: "n", Desc: "nickname"},
 		)
 	}
 

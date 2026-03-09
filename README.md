@@ -14,6 +14,11 @@ Browse servers, trigger deployments, edit environment files, manage databases, S
 - **SFTP integration** — Browse files via [termscp](https://github.com/veeso/termscp) with `Ctrl+F`
 - **Database tunnel** — Open remote databases in [lazysql](https://github.com/jorgerojas26/lazysql) with `Ctrl+D`
 - **Environment editor** — Opens `.env` in your preferred editor, detects changes, and uploads automatically
+- **Log viewer** — View server/site logs in-app or open in external editor
+- **Nicknames** — Assign short aliases to servers/sites, then launch directly with `phorge <nickname>`
+- **Quick launch** — Jump straight to a site with `phorge <sitename>` or `phorge <nickname>`
+- **Settings modal** — Edit config in-app with `Ctrl+O`
+- **Default SSH key** — Configure a default key for quick installation across servers
 - **Search/filter** — Press `/` to filter server and site lists in real-time
 - **Single binary** — No runtime dependencies, cross-compiled for Linux, macOS, and Windows
 
@@ -41,11 +46,16 @@ Browse servers, trigger deployments, edit environment files, manage databases, S
 | `Ctrl+F` | SFTP via termscp |
 | `Ctrl+D` | Database via lazysql |
 | `Ctrl+R` | Refresh |
+| `Ctrl+O` | Settings |
 | `d` | Deploy site |
-| `e` | Edit env / deploy script |
+| `e` | Edit env / deploy script / open logs in editor |
 | `c` | Create resource |
 | `x` | Delete resource |
 | `r` | Restart (workers, daemons) |
+| `n` | Set / remove nickname |
+| `D` | Set / clear default server/site |
+| `i` | Install default SSH key |
+| `l` | View logs |
 | `S` | View deploy script |
 
 ## Installation
@@ -71,14 +81,13 @@ Download the latest binary for your platform from [GitHub Releases](https://gith
 ## Usage
 
 ```bash
-phorge
+phorge                  # launch normally
+phorge mysite           # jump straight to a site by name
+phorge prod             # jump to a site by nickname
+phorge --version        # print version
 ```
 
 On first launch you'll be prompted for your [Forge API token](https://forge.laravel.com/user-profile/api). The token is saved to `~/.config/phorge/config.toml`.
-
-```bash
-phorge --version
-```
 
 ## Configuration
 
@@ -88,20 +97,32 @@ Config is stored at `~/.config/phorge/config.toml`:
 [forge]
 api_key = "your-forge-api-token"
 ssh_user = "forge"
+default_ssh_key = "~/.ssh/id_ed25519.pub"
 
 [editor]
 command = "vim"
 
 [server_users]
 "production-1" = "deployer"
+
+[nicknames]
+[nicknames.prod]
+server = "production-1"
+site = "myapp.com"
+
+[nicknames.staging]
+server = "staging-1"
+site = "staging.myapp.com"
 ```
 
 | Key | Description | Default |
 |---|---|---|
 | `forge.api_key` | Forge API token | (required) |
 | `forge.ssh_user` | Default SSH username | `forge` |
+| `forge.default_ssh_key` | Path to SSH public key for quick install | — |
 | `editor.command` | External editor for env/script editing | `vim` |
 | `server_users.<name>` | Per-server SSH user override | — |
+| `nicknames.<name>` | Short alias mapping to a server/site | — |
 
 ## Development
 

@@ -9,15 +9,23 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
 )
 
+// NicknameEntry maps a short alias to a server and optional site.
+type NicknameEntry struct {
+	Server string `toml:"server"`
+	Site   string `toml:"site,omitempty"`
+}
+
 // Config is the top-level configuration structure.
 type Config struct {
-	Forge       ForgeConfig       `toml:"forge"`
-	Editor      EditorConfig      `toml:"editor"`
-	ServerUsers map[string]string `toml:"server_users,omitempty"`
+	Forge       ForgeConfig            `toml:"forge"`
+	Editor      EditorConfig           `toml:"editor"`
+	ServerUsers map[string]string      `toml:"server_users,omitempty"`
+	Nicknames   map[string]NicknameEntry `toml:"nicknames,omitempty"`
 }
 
 // ForgeConfig holds Laravel Forge API settings.
@@ -42,6 +50,7 @@ func Default() *Config {
 			Command: "vim",
 		},
 		ServerUsers: make(map[string]string),
+		Nicknames:   make(map[string]NicknameEntry),
 	}
 }
 
@@ -79,9 +88,12 @@ func LoadFrom(path string) (*Config, error) {
 		return nil, err
 	}
 
-	// Ensure the map is never nil after unmarshalling.
+	// Ensure maps are never nil after unmarshalling.
 	if cfg.ServerUsers == nil {
 		cfg.ServerUsers = make(map[string]string)
+	}
+	if cfg.Nicknames == nil {
+		cfg.Nicknames = make(map[string]NicknameEntry)
 	}
 
 	return cfg, nil
@@ -116,6 +128,35 @@ func (c *Config) SSHUserFor(serverName string) string {
 		return user
 	}
 	return c.Forge.SSHUser
+}
+
+// LookupNickname returns the entry for the given nickname, or false if not found.
+func (c *Config) LookupNickname(name string) (NicknameEntry, bool) {
+	entry, ok := c.Nicknames[name]
+	return entry, ok
+}
+
+// SetNickname adds or updates a nickname mapping.
+func (c *Config) SetNickname(name, server, site string) {
+	if c.Nicknames == nil {
+		c.Nicknames = make(map[string]NicknameEntry)
+	}
+	c.Nicknames[name] = NicknameEntry{Server: server, Site: site}
+}
+
+// RemoveNickname deletes a nickname mapping.
+func (c *Config) RemoveNickname(name string) {
+	delete(c.Nicknames, name)
+}
+
+// FindNicknameFor returns the nickname for a given server/site combo, or empty string.
+func (c *Config) FindNicknameFor(server, site string) string {
+	for name, entry := range c.Nicknames {
+		if strings.EqualFold(entry.Server, server) && strings.EqualFold(entry.Site, site) {
+			return name
+		}
+	}
+	return ""
 }
 
 // ProjectConfig is a per-directory config stored in .phorge in the working

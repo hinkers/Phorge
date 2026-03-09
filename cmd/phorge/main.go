@@ -45,7 +45,13 @@ func main() {
 		}
 	}
 
-	p := tea.NewProgram(tui.NewApp(cfg))
+	// Check for a nickname or site name argument.
+	var jumpTarget string
+	if len(os.Args) > 1 && os.Args[1] != "--version" && os.Args[1] != "-v" {
+		jumpTarget = os.Args[1]
+	}
+
+	p := tea.NewProgram(tui.NewApp(cfg, jumpTarget))
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

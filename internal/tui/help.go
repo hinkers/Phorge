@@ -263,6 +263,7 @@ func helpSections() []helpSection {
 				{"f", "SFTP"},
 				{"r", "Reboot server"},
 				{"D", "Set/clear default"},
+				{"n", "Set/remove nickname"},
 			},
 		},
 		{
@@ -271,6 +272,7 @@ func helpSections() []helpSection {
 				{"e", "Edit env/script"},
 				{"s", "SSH"},
 				{"D", "Set/clear default"},
+				{"n", "Set/remove nickname"},
 				{"l", "View logs"},
 			},
 		},

@@ -102,6 +102,10 @@ type App struct {
 	// Settings modal overlay.
 	settingsModal SettingsModal
 
+	// jumpTarget is a nickname or site name from the CLI arg.
+	// Used to auto-navigate after servers load.
+	jumpTarget string
+
 	// Output polling state for auto-updating deployment/command output.
 	outputPoll outputPollState
 
@@ -129,16 +133,37 @@ type outputPollState struct {
 }
 
 // NewApp creates a new App model with the given configuration.
-func NewApp(cfg *config.Config) App {
+// jumpTarget is an optional nickname or site name from CLI args.
+func NewApp(cfg *config.Config, jumpTarget string) App {
 	client := forge.NewClient(cfg.Forge.APIKey)
 	project := config.LoadProjectConfig()
+
+	// If a jump target is given, resolve it: check nicknames first, then
+	// treat it as a site name. This overrides the .phorge project config.
+	if jumpTarget != "" {
+		if entry, ok := cfg.LookupNickname(jumpTarget); ok {
+			project.Server = entry.Server
+			project.Site = entry.Site
+		} else {
+			// Treat the arg as a site name; server will be resolved after loading.
+			project.Site = jumpTarget
+		}
+	}
+
+	// Build nickname display map.
+	nickMap := make(map[string]string)
+	for nick, entry := range cfg.Nicknames {
+		nickMap[entry.Server+"\n"+entry.Site] = nick
+	}
+
 	return App{
 		forge:       client,
 		config:      cfg,
 		project:     project,
+		jumpTarget:  jumpTarget,
 		focus:       FocusTree,
 		activeTab:   1,
-		treePanel:   panels.NewTreePanel().SetDefaultServer(project.Server).SetDefaultSite(project.Site),
+		treePanel:   panels.NewTreePanel().SetDefaultServer(project.Server).SetDefaultSite(project.Site).SetNicknames(nickMap),
 		outputPanel: panels.NewOutputPanel(),
 		serverInfo:  panels.NewServerInfo(),
 		siteInfo:    panels.NewSiteInfo(),
@@ -208,9 +233,19 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.treePanel = m.treePanel.SetServers(msg.servers).SetLoading(false)
 
-		// Auto-expand default server from per-directory .phorge config.
 		var cmds []tea.Cmd
-		if defaultName := m.project.Server; defaultName != "" {
+
+		if m.jumpTarget != "" && m.project.Server == "" {
+			// Bare site name: expand all servers to search for the site.
+			for _, srv := range msg.servers {
+				var cmd tea.Cmd
+				m.treePanel, cmd = m.treePanel.ExpandServer(srv.ID)
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+			}
+		} else if defaultName := m.project.Server; defaultName != "" {
+			// Auto-expand default server from per-directory .phorge config or nickname.
 			if srv := m.treePanel.FindServerByName(defaultName); srv != nil {
 				var cmd tea.Cmd
 				m.treePanel, cmd = m.treePanel.ExpandServer(srv.ID)
@@ -267,12 +302,28 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// sites are first loaded.
 		if defaultSite := m.project.Site; defaultSite != "" {
 			if defaultServer := m.project.Server; defaultServer != "" {
+				// Known server: only match within that server.
 				if srv := m.treePanel.FindServerByName(defaultServer); srv != nil && srv.ID == msg.serverID {
 					_, site := m.treePanel.FindSiteByName(defaultSite)
 					if site != nil {
 						m.treePanel, _ = m.treePanel.SetCursorToSite(site.ID)
 						m.selectedSite = site
 						m.siteInfo = m.siteInfo.SetSite(site)
+					}
+				}
+			} else {
+				// Bare site name search: check this batch of sites.
+				for i := range msg.sites {
+					if strings.EqualFold(msg.sites[i].Name, defaultSite) {
+						m.treePanel, _ = m.treePanel.SetCursorToSite(msg.sites[i].ID)
+						m.selectedSite = &msg.sites[i]
+						m.siteInfo = m.siteInfo.SetSite(&msg.sites[i])
+						// Also select the parent server.
+						if srv := m.treePanel.FindServerByID(msg.serverID); srv != nil {
+							m.selectedSrv = srv
+							m.serverInfo = m.serverInfo.SetServer(srv)
+						}
+						break
 					}
 				}
 			}
@@ -890,6 +941,9 @@ func (m App) handleTreeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("D"))):
 			// Toggle default server for this directory (.phorge file).
 			return m, m.toggleDefault(m.selectedSrv.Name, "")
+		case key.Matches(msg, key.NewBinding(key.WithKeys("n"))):
+			// Set/remove nickname for server.
+			return m.promptNickname(m.selectedSrv.Name, "")
 		}
 	}
 
@@ -905,6 +959,9 @@ func (m App) handleTreeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("D"))):
 			// Toggle default site for this directory (.phorge file).
 			return m, m.toggleDefault(m.selectedSrv.Name, m.selectedSite.Name)
+		case key.Matches(msg, key.NewBinding(key.WithKeys("n"))):
+			// Set/remove nickname for site.
+			return m.promptNickname(m.selectedSrv.Name, m.selectedSite.Name)
 		}
 	}
 
@@ -1609,6 +1666,30 @@ func (m App) handleInputResult(msg components.InputResult) (tea.Model, tea.Cmd) 
 		m.pendingInputValue = ""
 		return m, m.sshKeysPanel.CreateKey(value, keyContent, "forge")
 
+	case "set-nickname":
+		// value is the nickname. pendingInputValue holds "server\nsite".
+		parts := strings.SplitN(m.pendingInputValue, "\n", 2)
+		m.pendingInputValue = ""
+		serverName := parts[0]
+		siteName := ""
+		if len(parts) > 1 {
+			siteName = parts[1]
+		}
+		m.config.SetNickname(value, serverName, siteName)
+		m.treePanel = m.treePanel.SetNicknames(m.buildNicknameMap())
+		if err := m.config.Save(); err != nil {
+			m.toast = fmt.Sprintf("Save error: %v", err)
+			m.toastIsErr = true
+			return m, m.clearToastAfter(3 * time.Second)
+		}
+		target := serverName
+		if siteName != "" {
+			target = siteName
+		}
+		m.toast = fmt.Sprintf("Nickname '%s' set for %s", value, target)
+		m.toastIsErr = false
+		return m, m.clearToastAfter(3 * time.Second)
+
 	case "settings-api-key", "settings-ssh-user", "settings-editor", "settings-default-ssh-key":
 		m.settingsModal = m.settingsModal.ApplyValue(msg.ID, value)
 		// Re-open settings modal after inline edit.
@@ -2137,6 +2218,45 @@ func (m App) toggleDefault(serverName, siteName string) tea.Cmd {
 		err := config.SaveProjectConfig(config.ProjectConfig{Server: newServer, Site: newSite})
 		return setDefaultMsg{serverName: newServer, siteName: newSite, err: err}
 	}
+}
+
+// buildNicknameMap creates the display map for tree panel nicknames.
+func (m App) buildNicknameMap() map[string]string {
+	result := make(map[string]string)
+	for nick, entry := range m.config.Nicknames {
+		result[entry.Server+"\n"+entry.Site] = nick
+	}
+	return result
+}
+
+// promptNickname opens an input dialog to set or remove a nickname.
+func (m App) promptNickname(serverName, siteName string) (tea.Model, tea.Cmd) {
+	target := serverName
+	if siteName != "" {
+		target = siteName
+	}
+
+	// Check if there's already a nickname for this target.
+	existing := m.config.FindNicknameFor(serverName, siteName)
+	if existing != "" {
+		// Remove the existing nickname.
+		m.config.RemoveNickname(existing)
+		m.treePanel = m.treePanel.SetNicknames(m.buildNicknameMap())
+		if err := m.config.Save(); err != nil {
+			m.toast = fmt.Sprintf("Save error: %v", err)
+			m.toastIsErr = true
+			return m, m.clearToastAfter(3 * time.Second)
+		}
+		m.toast = fmt.Sprintf("Removed nickname '%s' from %s", existing, target)
+		m.toastIsErr = false
+		return m, m.clearToastAfter(3 * time.Second)
+	}
+
+	// No existing nickname — prompt for one.
+	m.pendingInputValue = serverName + "\n" + siteName
+	input := components.NewInput("set-nickname", fmt.Sprintf("Nickname for %s:", target), "my-site")
+	m.inputDialog = &input
+	return m, nil
 }
 
 // rebootServer returns a command that initiates a server reboot.
