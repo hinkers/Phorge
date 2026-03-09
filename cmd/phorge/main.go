@@ -13,9 +13,24 @@ import (
 var version = "dev"
 
 func main() {
-	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
-		fmt.Printf("phorge %s\n", version)
-		os.Exit(0)
+	// Parse arguments: phorge [nickname] [--ssh|--sftp|--db] [--version|-v]
+	var jumpTarget string
+	var action tui.LaunchAction
+
+	for _, arg := range os.Args[1:] {
+		switch arg {
+		case "--version", "-v":
+			fmt.Printf("phorge %s\n", version)
+			os.Exit(0)
+		case "--ssh", "-s":
+			action = tui.LaunchSSH
+		case "--sftp", "-f":
+			action = tui.LaunchSFTP
+		case "--db", "-d":
+			action = tui.LaunchDB
+		default:
+			jumpTarget = arg
+		}
 	}
 
 	cfg, err := config.Load()
@@ -45,13 +60,7 @@ func main() {
 		}
 	}
 
-	// Check for a nickname or site name argument.
-	var jumpTarget string
-	if len(os.Args) > 1 && os.Args[1] != "--version" && os.Args[1] != "-v" {
-		jumpTarget = os.Args[1]
-	}
-
-	p := tea.NewProgram(tui.NewApp(cfg, jumpTarget))
+	p := tea.NewProgram(tui.NewApp(cfg, jumpTarget, action))
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

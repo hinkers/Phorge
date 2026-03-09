@@ -84,7 +84,16 @@ Download the latest binary for your platform from [GitHub Releases](https://gith
 phorge                  # launch normally
 phorge mysite           # jump straight to a site by name
 phorge prod             # jump to a site by nickname
+phorge prod --ssh       # SSH into a nicknamed site
+phorge prod --sftp      # SFTP into a nicknamed site
+phorge prod --db        # open database tunnel for a nicknamed site
 phorge --version        # print version
+```
+
+Flags can also be used with `.phorge` project defaults (no nickname needed):
+
+```bash
+phorge --ssh            # SSH using .phorge default server/site
 ```
 
 On first launch you'll be prompted for your [Forge API token](https://forge.laravel.com/user-profile/api). The token is saved to `~/.config/phorge/config.toml`.

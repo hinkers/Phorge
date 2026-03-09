@@ -21,6 +21,16 @@ import (
 	"github.com/hinkers/Phorge/internal/tui/theme"
 )
 
+// LaunchAction is an optional action to run immediately after resolving a jump target.
+type LaunchAction string
+
+const (
+	LaunchNone LaunchAction = ""
+	LaunchSSH  LaunchAction = "ssh"
+	LaunchSFTP LaunchAction = "sftp"
+	LaunchDB   LaunchAction = "db"
+)
+
 // Focus tracks which panel has keyboard focus.
 type Focus int
 
@@ -106,6 +116,9 @@ type App struct {
 	// Used to auto-navigate after servers load.
 	jumpTarget string
 
+	// launchAction is an optional action (ssh/sftp/db) to run after resolving the jump target.
+	launchAction LaunchAction
+
 	// Output polling state for auto-updating deployment/command output.
 	outputPoll outputPollState
 
@@ -134,7 +147,8 @@ type outputPollState struct {
 
 // NewApp creates a new App model with the given configuration.
 // jumpTarget is an optional nickname or site name from CLI args.
-func NewApp(cfg *config.Config, jumpTarget string) App {
+// action is an optional action to run after resolving the target (ssh/sftp/db).
+func NewApp(cfg *config.Config, jumpTarget string, action LaunchAction) App {
 	client := forge.NewClient(cfg.Forge.APIKey)
 	project := config.LoadProjectConfig()
 
@@ -160,8 +174,9 @@ func NewApp(cfg *config.Config, jumpTarget string) App {
 		forge:       client,
 		config:      cfg,
 		project:     project,
-		jumpTarget:  jumpTarget,
-		focus:       FocusTree,
+		jumpTarget:   jumpTarget,
+		launchAction: action,
+		focus:        FocusTree,
 		activeTab:   1,
 		treePanel:   panels.NewTreePanel().SetDefaultServer(project.Server).SetDefaultSite(project.Site).SetNicknames(nickMap),
 		outputPanel: panels.NewOutputPanel(),
@@ -269,6 +284,14 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.selectedSite = site
 		m.siteInfo = m.siteInfo.SetSite(site)
+
+		// If jump target resolved to server-only (no site), fire launch action now.
+		if m.launchAction != LaunchNone && m.project.Server != "" && m.project.Site == "" && m.selectedSrv != nil {
+			action := m.launchAction
+			m.launchAction = LaunchNone
+			cmds = append(cmds, m.execLaunchAction(action))
+		}
+
 		if len(cmds) > 0 {
 			return m, tea.Batch(cmds...)
 		}
@@ -300,6 +323,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// If a default site is configured, navigate to it when its server's
 		// sites are first loaded.
+		siteFound := false
 		if defaultSite := m.project.Site; defaultSite != "" {
 			if defaultServer := m.project.Server; defaultServer != "" {
 				// Known server: only match within that server.
@@ -309,6 +333,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.treePanel, _ = m.treePanel.SetCursorToSite(site.ID)
 						m.selectedSite = site
 						m.siteInfo = m.siteInfo.SetSite(site)
+						siteFound = true
 					}
 				}
 			} else {
@@ -323,10 +348,18 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.selectedSrv = srv
 							m.serverInfo = m.serverInfo.SetServer(srv)
 						}
+						siteFound = true
 						break
 					}
 				}
 			}
+		}
+
+		// If the jump target resolved and there's a pending launch action, fire it.
+		if siteFound && m.launchAction != LaunchNone {
+			action := m.launchAction
+			m.launchAction = LaunchNone // consume it
+			return m, m.execLaunchAction(action)
 		}
 		return m, nil
 
@@ -2217,6 +2250,20 @@ func (m App) toggleDefault(serverName, siteName string) tea.Cmd {
 		}
 		err := config.SaveProjectConfig(config.ProjectConfig{Server: newServer, Site: newSite})
 		return setDefaultMsg{serverName: newServer, siteName: newSite, err: err}
+	}
+}
+
+// execLaunchAction fires the appropriate command for a CLI launch action.
+func (m App) execLaunchAction(action LaunchAction) tea.Cmd {
+	switch action {
+	case LaunchSSH:
+		return m.sshCmd()
+	case LaunchSFTP:
+		return m.sftpCmd()
+	case LaunchDB:
+		return m.databaseCmd()
+	default:
+		return nil
 	}
 }
 
