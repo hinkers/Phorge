@@ -143,7 +143,11 @@ type outputPollState struct {
 	siteID       int64
 	deploymentID int64
 	active       bool
+	frame        int // spinner frame index
 }
+
+// spinnerFrames are the characters cycled through while polling.
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 // NewApp creates a new App model with the given configuration.
 // jumpTarget is an optional nickname or site name from CLI args.
@@ -396,12 +400,15 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pollOutputResultMsg:
 		title := "Deploy Output"
 		if !msg.finished {
-			title = "Deploy Output (deploying...)"
+			spinner := spinnerFrames[m.outputPoll.frame%len(spinnerFrames)]
+			title = fmt.Sprintf("Deploy Output %s deploying…", spinner)
+			m.outputPoll.frame++
 		}
 		m.outputPanel = m.outputPanel.SetContent(title, msg.output)
 		m.focus = FocusOutput
 		if msg.finished {
 			m.outputPoll.active = false
+			m.outputPoll.frame = 0
 			// Refresh the deployments list to show updated status.
 			if m.activeTab == 1 {
 				return m, m.deploymentsPanel.LoadDeployments()
@@ -2193,21 +2200,21 @@ func (m App) fetchDeployOutput(serverID, siteID, deployID int64) tea.Cmd {
 	}
 }
 
-// fetchDeployOutputWithStatus fetches both output and deployment status,
-// returning a pollOutputResultMsg. Used for auto-updating output.
+// fetchDeployOutputWithStatus fetches both status and output for a deployment.
+// Status is checked first so that when the deployment has finished, the
+// subsequent output fetch captures the complete log.
 func (m App) fetchDeployOutputWithStatus(serverID, siteID, deployID int64) tea.Cmd {
 	client := m.forge
 	return func() tea.Msg {
+		// Check status first to avoid a race where output is fetched before
+		// the deployment finishes but status is checked after.
+		dep, err := client.Deployments.Get(context.Background(), serverID, siteID, deployID)
+		finished := err != nil || dep.Status != "deploying"
+
 		output, err := client.Deployments.GetOutput(context.Background(), serverID, siteID, deployID)
 		if err != nil {
 			return panels.PanelErrMsg{Err: err}
 		}
-		dep, err := client.Deployments.Get(context.Background(), serverID, siteID, deployID)
-		if err != nil {
-			// If we can't get status, still show the output and stop polling.
-			return pollOutputResultMsg{output: output, finished: true}
-		}
-		finished := dep.Status != "deploying"
 		return pollOutputResultMsg{output: output, finished: finished}
 	}
 }
