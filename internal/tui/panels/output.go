@@ -60,6 +60,12 @@ func (o OutputPanel) SetContent(title, content string) OutputPanel {
 	return o
 }
 
+// SetTitle updates only the panel title without changing the content or scroll.
+func (o OutputPanel) SetTitle(title string) OutputPanel {
+	o.title = title
+	return o
+}
+
 // Clear removes all content from the output panel.
 func (o OutputPanel) Clear() OutputPanel {
 	o.title = ""

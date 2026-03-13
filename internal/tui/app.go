@@ -388,7 +388,10 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			deploymentID: msg.DeploymentID,
 			active:       true,
 		}
-		return m, m.fetchDeployOutputWithStatus(msg.ServerID, msg.SiteID, msg.DeploymentID)
+		return m, tea.Batch(
+			m.fetchDeployOutputWithStatus(msg.ServerID, msg.SiteID, msg.DeploymentID),
+			m.spinnerTick(),
+		)
 
 	// Deploy output fetched — route to output panel.
 	case panels.DeployOutputMsg:
@@ -398,25 +401,63 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Polled output+status result.
 	case pollOutputResultMsg:
-		title := "Deploy Output"
-		if !msg.finished {
-			spinner := spinnerFrames[m.outputPoll.frame%len(spinnerFrames)]
-			title = fmt.Sprintf("Deploy Output %s deploying…", spinner)
-			m.outputPoll.frame++
-		}
-		m.outputPanel = m.outputPanel.SetContent(title, msg.output)
+		spinner := spinnerFrames[m.outputPoll.frame%len(spinnerFrames)]
+		m.outputPanel = m.outputPanel.SetContent(
+			fmt.Sprintf("Deploy Output %s deploying…", spinner),
+			msg.output,
+		)
 		m.focus = FocusOutput
 		if msg.finished {
-			m.outputPoll.active = false
-			m.outputPoll.frame = 0
-			// Refresh the deployments list to show updated status.
-			if m.activeTab == 1 {
-				return m, m.deploymentsPanel.LoadDeployments()
-			}
-			return m, nil
+			// Deployment finished — wait briefly then re-fetch output
+			// to ensure the API has flushed the complete log.
+			return m, tea.Tick(time.Second, func(time.Time) tea.Msg {
+				return pollFinalFetchMsg{}
+			})
 		}
 		// Continue polling.
 		return m, m.pollOutputTick()
+
+	// Delay expired after deployment finished — do the final fetch.
+	case pollFinalFetchMsg:
+		if !m.outputPoll.active {
+			return m, nil
+		}
+		client := m.forge
+		serverID := m.outputPoll.serverID
+		siteID := m.outputPoll.siteID
+		deployID := m.outputPoll.deploymentID
+		return m, func() tea.Msg {
+			output, err := client.Deployments.GetOutput(
+				context.Background(), serverID, siteID, deployID,
+			)
+			if err != nil {
+				return panels.PanelErrMsg{Err: err}
+			}
+			return pollFinalOutputMsg{output: output}
+		}
+
+	// Final output re-fetch after deployment finished.
+	case pollFinalOutputMsg:
+		m.outputPanel = m.outputPanel.SetContent("Deploy Output", msg.output)
+		m.outputPoll.active = false
+		m.outputPoll.frame = 0
+		// Refresh the deployments list to show updated status.
+		if m.activeTab == 1 {
+			return m, m.deploymentsPanel.LoadDeployments()
+		}
+		return m, nil
+
+	// Spinner animation tick — runs independently of the data poll.
+	case pollSpinnerTickMsg:
+		if !m.outputPoll.active {
+			return m, nil
+		}
+		m.outputPoll.frame++
+		spinner := spinnerFrames[m.outputPoll.frame%len(spinnerFrames)]
+		m.outputPanel = m.outputPanel.SetTitle(
+			fmt.Sprintf("Deploy Output %s deploying…", spinner),
+		)
+		return m, m.spinnerTick()
 
 	// Poll timer fired.
 	case pollOutputTickMsg:
@@ -2223,6 +2264,13 @@ func (m App) fetchDeployOutputWithStatus(serverID, siteID, deployID int64) tea.C
 func (m App) pollOutputTick() tea.Cmd {
 	return tea.Tick(2*time.Second, func(time.Time) tea.Msg {
 		return pollOutputTickMsg{}
+	})
+}
+
+// spinnerTick returns a command that sends a pollSpinnerTickMsg after 150ms.
+func (m App) spinnerTick() tea.Cmd {
+	return tea.Tick(150*time.Millisecond, func(time.Time) tea.Msg {
+		return pollSpinnerTickMsg{}
 	})
 }
 

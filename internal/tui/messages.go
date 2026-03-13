@@ -46,8 +46,20 @@ type setDefaultMsg struct {
 // pollOutputTickMsg is sent by the output polling timer to trigger a refresh.
 type pollOutputTickMsg struct{}
 
+// pollSpinnerTickMsg is sent by the spinner animation timer.
+type pollSpinnerTickMsg struct{}
+
 // pollOutputResultMsg carries the result of a polled output fetch.
 type pollOutputResultMsg struct {
 	output   string
 	finished bool
+}
+
+// pollFinalFetchMsg is sent after a short delay when a deployment finishes,
+// triggering one last output fetch to capture the complete log.
+type pollFinalFetchMsg struct{}
+
+// pollFinalOutputMsg carries the result of the final output re-fetch.
+type pollFinalOutputMsg struct {
+	output string
 }
