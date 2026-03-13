@@ -97,6 +97,23 @@ func (m App) sftpCmd() tea.Cmd {
 	})
 }
 
+// visitSiteCmd opens the selected site in the default browser.
+func (m App) visitSiteCmd() tea.Cmd {
+	if m.selectedSite == nil {
+		return nil
+	}
+
+	scheme := "http"
+	if m.selectedSite.IsSecured {
+		scheme = "https"
+	}
+	url := fmt.Sprintf("%s://%s", scheme, m.selectedSite.Name)
+
+	return tea.ExecProcess(exec.Command("open", url), func(err error) tea.Msg {
+		return externalExitMsg{err}
+	})
+}
+
 // databaseCmd returns a tea.Cmd that fetches the .env file for the selected
 // site, parses DB credentials, and sends a dbReadyMsg so the app can set up
 // the SSH tunnel and launch lazysql.

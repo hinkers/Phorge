@@ -199,6 +199,7 @@ type SiteActionKeyMap struct {
 	SSH      key.Binding
 	Database key.Binding
 	Logs     key.Binding
+	Visit    key.Binding
 }
 
 // DefaultSiteActionKeyMap returns the default site action keybindings.
@@ -223,6 +224,10 @@ func DefaultSiteActionKeyMap() SiteActionKeyMap {
 		Logs: key.NewBinding(
 			key.WithKeys("l"),
 			key.WithHelp("l", "logs"),
+		),
+		Visit: key.NewBinding(
+			key.WithKeys("v"),
+			key.WithHelp("v", "visit site"),
 		),
 	}
 }

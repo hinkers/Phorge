@@ -1037,6 +1037,12 @@ func (m App) handleTreeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 			return m, nil
+		case key.Matches(msg, m.siteActKeys.Visit):
+			cmd := m.visitSiteCmd()
+			if cmd != nil {
+				return m, cmd
+			}
+			return m, nil
 		case key.Matches(msg, key.NewBinding(key.WithKeys("D"))):
 			// Toggle default site for this directory (.phorge file).
 			return m, m.toggleDefault(m.selectedSrv.Name, m.selectedSite.Name)

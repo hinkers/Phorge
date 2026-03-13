@@ -274,6 +274,7 @@ func helpSections() []helpSection {
 				{"D", "Set/clear default"},
 				{"n", "Set/remove nickname"},
 				{"l", "View logs"},
+			{"v", "Visit site in browser"},
 			},
 		},
 		{
