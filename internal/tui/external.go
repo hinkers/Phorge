@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -116,7 +117,7 @@ func (m App) visitSiteCmd() tea.Cmd {
 
 // databaseCmd returns a tea.Cmd that fetches the .env file for the selected
 // site, parses DB credentials, and sends a dbReadyMsg so the app can set up
-// the SSH tunnel and launch lazysql.
+// the SSH tunnel and launch sqlit.
 func (m App) databaseCmd() tea.Cmd {
 	if m.selectedSrv == nil || m.selectedSite == nil {
 		return nil
@@ -154,7 +155,7 @@ func (m App) databaseCmd() tea.Cmd {
 	}
 }
 
-// handleDBReady sets up the SSH tunnel and launches lazysql for the database
+// handleDBReady sets up the SSH tunnel and launches sqlit for the database
 // connection described in msg. It returns the updated model and tea.Cmd.
 func (m App) handleDBReady(msg dbReadyMsg) (App, tea.Cmd) {
 	// Find a free local port for the SSH tunnel.
@@ -210,16 +211,16 @@ func (m App) handleDBReady(msg dbReadyMsg) (App, tea.Cmd) {
 	// Wait briefly for the tunnel to establish.
 	time.Sleep(time.Second)
 
-	// Build the lazysql connection string.
-	// lazysql accepts a DSN-style connection string.
-	lazysqlArgs := buildLazysqlArgs(msg, localPort)
-	lazysqlCmd := exec.Command("lazysql", lazysqlArgs...)
+	// Build the sqlit connection string.
+	sqlitArgs := buildSqlitArgs(msg, localPort)
+	sqlitCmd := exec.Command("sqlit", sqlitArgs...)
+	sqlitCmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
 	// Store reference for cleanup in the callback.
 	tunnelProc := tunnel.Process
 
-	return m, tea.ExecProcess(lazysqlCmd, func(err error) tea.Msg {
-		// Always kill the tunnel when lazysql exits.
+	return m, tea.ExecProcess(sqlitCmd, func(err error) tea.Msg {
+		// Always kill the tunnel when sqlit exits.
 		if tunnelProc != nil {
 			_ = tunnelProc.Kill()
 		}
@@ -259,13 +260,13 @@ func findFreePort() (int, error) {
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
-// buildLazysqlArgs constructs the command-line arguments for lazysql
+// buildSqlitArgs constructs the command-line arguments for sqlit
 // based on the database connection type and credentials. The DSN omits the
-// database name so lazysql connects to the server with access to all databases.
-func buildLazysqlArgs(msg dbReadyMsg, localPort int) []string {
+// database name so sqlit connects to the server with access to all databases.
+func buildSqlitArgs(msg dbReadyMsg, localPort int) []string {
 	switch msg.connection {
 	case "pgsql":
-		dsn := fmt.Sprintf("postgres://%s:%s@127.0.0.1:%d/?sslmode=disable",
+		dsn := fmt.Sprintf("postgresql://%s:%s@127.0.0.1:%d/?sslmode=disable",
 			msg.username, msg.password, localPort)
 		return []string{dsn}
 	default:

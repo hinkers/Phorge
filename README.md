@@ -12,7 +12,7 @@ Browse servers, trigger deployments, edit environment files, manage databases, S
 - **Database management** — Databases and database users with create/delete
 - **SSH integration** — SSH into any server or site with `Ctrl+S`
 - **SFTP integration** — Browse files via [termscp](https://github.com/veeso/termscp) with `Ctrl+F`
-- **Database tunnel** — Open remote databases in [lazysql](https://github.com/jorgerojas26/lazysql) with `Ctrl+D`
+- **Database tunnel** — Open remote databases in [sqlit](https://github.com/Maxteabag/sqlit) with `Ctrl+D`
 - **Environment editor** — Opens `.env` in your preferred editor, detects changes, and uploads automatically
 - **Log viewer** — View server/site logs in-app or open in external editor
 - **Nicknames** — Assign short aliases to servers/sites, then launch directly with `phorge <nickname>`
@@ -44,7 +44,7 @@ Browse servers, trigger deployments, edit environment files, manage databases, S
 |---|---|
 | `Ctrl+S` | SSH to server |
 | `Ctrl+F` | SFTP via termscp |
-| `Ctrl+D` | Database via lazysql |
+| `Ctrl+D` | Database via sqlit |
 | `Ctrl+R` | Refresh |
 | `Ctrl+O` | Settings |
 | `d` | Deploy site |
