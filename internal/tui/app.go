@@ -2258,7 +2258,14 @@ func (m App) fetchDeployOutputWithStatus(serverID, siteID, deployID int64) tea.C
 		dep, err := client.Deployments.Get(context.Background(), serverID, siteID, deployID)
 		finished := err != nil || dep.Status != "deploying"
 
-		output, err := client.Deployments.GetOutput(context.Background(), serverID, siteID, deployID)
+		// Use the live deployment log endpoint while deploying (it updates
+		// in real time), and the archived history output once finished.
+		var output string
+		if finished {
+			output, err = client.Deployments.GetOutput(context.Background(), serverID, siteID, deployID)
+		} else {
+			output, err = client.Deployments.GetLog(context.Background(), serverID, siteID)
+		}
 		if err != nil {
 			return panels.PanelErrMsg{Err: err}
 		}
