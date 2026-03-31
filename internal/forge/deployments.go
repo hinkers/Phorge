@@ -47,12 +47,8 @@ func (s *DeploymentsService) Deploy(ctx context.Context, serverID, siteID int64)
 
 // GetLog returns the latest deployment log for the site.
 func (s *DeploymentsService) GetLog(ctx context.Context, serverID, siteID int64) (string, error) {
-	var resp struct {
-		Output string `json:"output"`
-	}
 	path := fmt.Sprintf("/servers/%d/sites/%d/deployment/log", serverID, siteID)
-	err := s.client.do(ctx, http.MethodGet, path, nil, &resp)
-	return resp.Output, err
+	return s.client.getText(ctx, path)
 }
 
 // GetScript returns the deployment script contents as plain text.
