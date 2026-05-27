@@ -40,6 +40,7 @@ func (s SettingsModal) Open(cfg *config.Config) SettingsModal {
 	s.fields = []settingsField{
 		{label: "API Key", value: cfg.Forge.APIKey, inputID: "settings-api-key", mask: true},
 		{label: "SSH User", value: cfg.Forge.SSHUser, inputID: "settings-ssh-user"},
+		{label: "SSH Identity", value: cfg.Forge.SSHIdentity, inputID: "settings-ssh-identity"},
 		{label: "Editor", value: cfg.Editor.Command, inputID: "settings-editor"},
 		{label: "Default SSH Key", value: cfg.Forge.DefaultSSHKey, inputID: "settings-default-ssh-key"},
 	}
@@ -94,6 +95,8 @@ func (s SettingsModal) ApplyValue(inputID, value string) SettingsModal {
 		s.config.Forge.APIKey = value
 	case "settings-ssh-user":
 		s.config.Forge.SSHUser = value
+	case "settings-ssh-identity":
+		s.config.Forge.SSHIdentity = value
 	case "settings-editor":
 		s.config.Editor.Command = value
 	case "settings-default-ssh-key":
@@ -106,6 +109,8 @@ func (s SettingsModal) ApplyValue(inputID, value string) SettingsModal {
 			s.fields[i].value = s.config.Forge.APIKey
 		case "settings-ssh-user":
 			s.fields[i].value = s.config.Forge.SSHUser
+		case "settings-ssh-identity":
+			s.fields[i].value = s.config.Forge.SSHIdentity
 		case "settings-editor":
 			s.fields[i].value = s.config.Editor.Command
 		case "settings-default-ssh-key":

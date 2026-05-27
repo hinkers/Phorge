@@ -55,6 +55,10 @@ func (m App) sshCmd() tea.Cmd {
 	user := m.config.SSHUserFor(m.selectedSrv.Name)
 	args := []string{fmt.Sprintf("%s@%s", user, m.selectedSrv.IPAddress)}
 
+	if identity := m.config.SSHIdentityPath(); identity != "" {
+		args = append([]string{"-i", identity}, args...)
+	}
+
 	// Custom SSH port.
 	if m.selectedSrv.SSHPort != 0 && m.selectedSrv.SSHPort != 22 {
 		args = append([]string{"-p", fmt.Sprintf("%d", m.selectedSrv.SSHPort)}, args...)
@@ -189,6 +193,9 @@ func (m App) handleDBReady(msg dbReadyMsg) (App, tea.Cmd) {
 		"-N", // no remote command
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "ExitOnForwardFailure=yes",
+	}
+	if identity := m.config.SSHIdentityPath(); identity != "" {
+		tunnelArgs = append(tunnelArgs, "-i", identity)
 	}
 	if sshPort != 22 {
 		tunnelArgs = append(tunnelArgs, "-p", fmt.Sprintf("%d", sshPort))

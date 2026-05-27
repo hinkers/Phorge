@@ -32,6 +32,7 @@ type Config struct {
 type ForgeConfig struct {
 	APIKey        string `toml:"api_key"`
 	SSHUser       string `toml:"ssh_user"`
+	SSHIdentity   string `toml:"ssh_identity,omitempty"`
 	DefaultSSHKey string `toml:"default_ssh_key,omitempty"`
 }
 
@@ -118,6 +119,21 @@ func (c *Config) SaveTo(path string) error {
 	}
 
 	return os.WriteFile(path, data, 0o600)
+}
+
+// SSHIdentityPath returns the expanded path to the SSH private key,
+// or empty string if not configured.
+func (c *Config) SSHIdentityPath() string {
+	p := c.Forge.SSHIdentity
+	if p == "" {
+		return ""
+	}
+	if strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			p = filepath.Join(home, p[2:])
+		}
+	}
+	return p
 }
 
 // SSHUserFor returns the SSH user for a given server.
