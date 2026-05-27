@@ -39,6 +39,7 @@ func main() {
 		os.Exit(1)
 	}
 
+
 	if cfg.Forge.APIKey == "" {
 		// Run the first-run setup flow to collect the API key.
 		setupProgram := tea.NewProgram(tui.NewSetup(cfg))

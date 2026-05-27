@@ -55,16 +55,14 @@ func Default() *Config {
 	}
 }
 
-// DefaultPath returns the platform-appropriate path to the config file.
-// On most systems this is ~/.config/phorge/config.toml.
+// DefaultPath returns the path to the config file.
+// Respects $XDG_CONFIG_HOME if set, otherwise uses ~/.config/phorge/config.toml.
 func DefaultPath() string {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		// Fall back to HOME/.config on failure.
-		home, _ := os.UserHomeDir()
-		dir = filepath.Join(home, ".config")
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		return filepath.Join(xdg, "phorge", "config.toml")
 	}
-	return filepath.Join(dir, "phorge", "config.toml")
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "phorge", "config.toml")
 }
 
 // Load reads the config from the default path.
