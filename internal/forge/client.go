@@ -9,13 +9,14 @@ import (
 	"net/http"
 )
 
-const defaultBaseURL = "https://forge.laravel.com/api/v1"
+const defaultBaseURL = "https://forge.laravel.com/api"
 
 // Client is the entry point for the Laravel Forge API.
 // Services are accessed through the exported fields (e.g. client.Servers).
 type Client struct {
 	BaseURL string
 	token   string
+	org     string
 	http    *http.Client
 
 	// Services
@@ -56,11 +57,13 @@ type GitService struct{ client *Client }
 type LogsService struct{ client *Client }
 type EventsService struct{ client *Client }
 
-// NewClient creates a new Forge API client authenticated with the given token.
-func NewClient(token string) *Client {
+// NewClient creates a new Forge API client authenticated with the given token,
+// scoped to the given organization.
+func NewClient(token, org string) *Client {
 	c := &Client{
 		BaseURL: defaultBaseURL,
 		token:   token,
+		org:     org,
 		http:    &http.Client{},
 	}
 
@@ -102,9 +105,9 @@ func (c *Client) do(ctx context.Context, method, path string, body any, result a
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", "application/vnd.api+json")
 	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", "application/vnd.api+json")
 	}
 
 	resp, err := c.http.Do(req)

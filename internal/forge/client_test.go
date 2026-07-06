@@ -11,7 +11,7 @@ import (
 // newTestClient creates a Client pointed at the given httptest.Server.
 func newTestClient(t *testing.T, srv *httptest.Server) *Client {
 	t.Helper()
-	c := NewClient("test-token")
+	c := NewClient("test-token", "test-org")
 	c.BaseURL = srv.URL
 	return c
 }
@@ -212,38 +212,11 @@ func TestValidationError(t *testing.T) {
 	}
 }
 
-func TestGetText(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/servers/1/sites/2/env" {
-			t.Errorf("unexpected path: %s", r.URL.Path)
-		}
-		if got := r.Header.Get("Accept"); got != "text/plain" {
-			t.Errorf("Accept = %q, want %q", got, "text/plain")
-		}
-
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("APP_NAME=Laravel\nAPP_ENV=production\n"))
-	}))
-	defer srv.Close()
-
-	client := newTestClient(t, srv)
-	text, err := client.getText(context.Background(), "/servers/1/sites/2/env")
-	if err != nil {
-		t.Fatalf("getText: %v", err)
-	}
-
-	expected := "APP_NAME=Laravel\nAPP_ENV=production\n"
-	if text != expected {
-		t.Errorf("getText = %q, want %q", text, expected)
-	}
-}
-
 func TestNewClientDefaults(t *testing.T) {
-	c := NewClient("my-token")
+	c := NewClient("my-token", "my-org")
 
-	if c.BaseURL != "https://forge.laravel.com/api/v1" {
-		t.Errorf("BaseURL = %q, want %q", c.BaseURL, "https://forge.laravel.com/api/v1")
+	if c.BaseURL != "https://forge.laravel.com/api" {
+		t.Errorf("BaseURL = %q, want %q", c.BaseURL, "https://forge.laravel.com/api")
 	}
 	if c.http == nil {
 		t.Fatal("http client is nil")

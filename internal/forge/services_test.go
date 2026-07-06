@@ -138,8 +138,8 @@ func TestDatabaseCreate(t *testing.T) {
 		if r.URL.Path != "/servers/1/databases" {
 			t.Errorf("path = %s, want /servers/1/databases", r.URL.Path)
 		}
-		if got := r.Header.Get("Content-Type"); got != "application/json" {
-			t.Errorf("Content-Type = %q, want %q", got, "application/json")
+		if got := r.Header.Get("Content-Type"); got != "application/vnd.api+json" {
+			t.Errorf("Content-Type = %q, want %q", got, "application/vnd.api+json")
 		}
 
 		// Verify request body
