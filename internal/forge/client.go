@@ -20,22 +20,23 @@ type Client struct {
 	http    *http.Client
 
 	// Services
-	Servers      *ServersService
-	Sites        *SitesService
-	Deployments  *DeploymentsService
-	Databases    *DatabasesService
-	Environment  *EnvironmentService
-	Certificates *CertificatesService
-	Workers      *WorkersService
-	Daemons      *DaemonsService
-	Firewall     *FirewallService
-	Jobs         *JobsService
-	Backups      *BackupsService
-	SSHKeys      *SSHKeysService
-	Commands     *CommandsService
-	Git          *GitService
-	Logs         *LogsService
-	Events       *EventsService
+	Organizations *OrganizationsService
+	Servers       *ServersService
+	Sites         *SitesService
+	Deployments   *DeploymentsService
+	Databases     *DatabasesService
+	Environment   *EnvironmentService
+	Certificates  *CertificatesService
+	Workers       *WorkersService
+	Daemons       *DaemonsService
+	Firewall      *FirewallService
+	Jobs          *JobsService
+	Backups       *BackupsService
+	SSHKeys       *SSHKeysService
+	Commands      *CommandsService
+	Git           *GitService
+	Logs          *LogsService
+	Events        *EventsService
 }
 
 // Service types -- each holds a back-pointer to the parent Client.
@@ -67,6 +68,7 @@ func NewClient(token, org string) *Client {
 		http:    &http.Client{},
 	}
 
+	c.Organizations = &OrganizationsService{client: c}
 	c.Servers = &ServersService{client: c}
 	c.Sites = &SitesService{client: c}
 	c.Deployments = &DeploymentsService{client: c}
@@ -190,4 +192,3 @@ func parseError(resp *http.Response) error {
 		return &base
 	}
 }
-

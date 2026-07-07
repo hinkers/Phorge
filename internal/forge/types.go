@@ -7,6 +7,14 @@ type User struct {
 	Email string `json:"email,omitempty"`
 }
 
+// Organization represents a Forge organization/team.
+type Organization struct {
+	Name      string `json:"name"`
+	Slug      string `json:"slug"`
+	CreatedAt string `json:"created_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
 // Server represents a provisioned server managed by Forge.
 type Server struct {
 	ID               int64  `json:"id"`

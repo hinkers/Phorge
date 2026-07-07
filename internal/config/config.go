@@ -22,15 +22,16 @@ type NicknameEntry struct {
 
 // Config is the top-level configuration structure.
 type Config struct {
-	Forge       ForgeConfig            `toml:"forge"`
-	Editor      EditorConfig           `toml:"editor"`
-	ServerUsers map[string]string      `toml:"server_users,omitempty"`
+	Forge       ForgeConfig              `toml:"forge"`
+	Editor      EditorConfig             `toml:"editor"`
+	ServerUsers map[string]string        `toml:"server_users,omitempty"`
 	Nicknames   map[string]NicknameEntry `toml:"nicknames,omitempty"`
 }
 
 // ForgeConfig holds Laravel Forge API settings.
 type ForgeConfig struct {
 	APIKey        string `toml:"api_key"`
+	Org           string `toml:"org"`
 	SSHUser       string `toml:"ssh_user"`
 	SSHIdentity   string `toml:"ssh_identity,omitempty"`
 	DefaultSSHKey string `toml:"default_ssh_key,omitempty"`
