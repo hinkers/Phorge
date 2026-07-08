@@ -6,51 +6,35 @@ import (
 	"net/http"
 )
 
+// sitePath builds the org-scoped certificates collection path for a site.
+func (s *CertificatesService) sitePath(serverID, siteID int64) string {
+	return s.client.orgPath("/servers/%d/sites/%d/certificates", serverID, siteID)
+}
+
 // List returns all SSL certificates for a site.
 func (s *CertificatesService) List(ctx context.Context, serverID, siteID int64) ([]Certificate, error) {
-	var resp struct {
-		Certificates []Certificate `json:"certificates"`
-	}
-	path := fmt.Sprintf("/servers/%d/sites/%d/certificates", serverID, siteID)
-	err := s.client.do(ctx, http.MethodGet, path, nil, &resp)
-	return resp.Certificates, err
+	return listResources[Certificate](s.client, ctx, s.sitePath(serverID, siteID))
 }
 
 // Get returns a single certificate by ID.
 func (s *CertificatesService) Get(ctx context.Context, serverID, siteID, certID int64) (*Certificate, error) {
-	var resp struct {
-		Certificate Certificate `json:"certificate"`
-	}
-	path := fmt.Sprintf("/servers/%d/sites/%d/certificates/%d", serverID, siteID, certID)
-	err := s.client.do(ctx, http.MethodGet, path, nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-	return &resp.Certificate, nil
+	return getResource[Certificate](s.client, ctx, fmt.Sprintf("%s/%d", s.sitePath(serverID, siteID), certID))
 }
 
 // CreateLetsEncrypt creates a new Let's Encrypt certificate for the given domains.
 func (s *CertificatesService) CreateLetsEncrypt(ctx context.Context, serverID, siteID int64, domains []string) (*Certificate, error) {
-	body := map[string]any{"domains": domains}
-	var resp struct {
-		Certificate Certificate `json:"certificate"`
-	}
-	path := fmt.Sprintf("/servers/%d/sites/%d/certificates/letsencrypt", serverID, siteID)
-	err := s.client.do(ctx, http.MethodPost, path, body, &resp)
-	if err != nil {
-		return nil, err
-	}
-	return &resp.Certificate, nil
+	body := map[string]any{"domains": domains, "type": "letsencrypt"}
+	return createResource[Certificate](s.client, ctx, s.sitePath(serverID, siteID), body)
 }
 
 // Activate activates an SSL certificate.
 func (s *CertificatesService) Activate(ctx context.Context, serverID, siteID, certID int64) error {
-	path := fmt.Sprintf("/servers/%d/sites/%d/certificates/%d/activate", serverID, siteID, certID)
-	return s.client.do(ctx, http.MethodPost, path, nil, nil)
+	path := fmt.Sprintf("%s/%d/actions", s.sitePath(serverID, siteID), certID)
+	body := map[string]string{"action": "activate"}
+	return s.client.do(ctx, http.MethodPost, path, body, nil)
 }
 
 // Delete removes an SSL certificate.
 func (s *CertificatesService) Delete(ctx context.Context, serverID, siteID, certID int64) error {
-	path := fmt.Sprintf("/servers/%d/sites/%d/certificates/%d", serverID, siteID, certID)
-	return s.client.do(ctx, http.MethodDelete, path, nil, nil)
+	return s.client.do(ctx, http.MethodDelete, fmt.Sprintf("%s/%d", s.sitePath(serverID, siteID), certID), nil, nil)
 }

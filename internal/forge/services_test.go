@@ -111,16 +111,22 @@ func TestEnvironmentGet(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Errorf("method = %s, want GET", r.Method)
 		}
-		if r.URL.Path != "/servers/1/sites/10/env" {
-			t.Errorf("path = %s, want /servers/1/sites/10/env", r.URL.Path)
+		if r.URL.Path != "/orgs/test-org/servers/1/sites/10/environment" {
+			t.Errorf("path = %s, want /orgs/test-org/servers/1/sites/10/environment", r.URL.Path)
 		}
-		if got := r.Header.Get("Accept"); got != "text/plain" {
-			t.Errorf("Accept = %q, want %q", got, "text/plain")
+		if got := r.Header.Get("Accept"); got != "application/vnd.api+json" {
+			t.Errorf("Accept = %q, want %q", got, "application/vnd.api+json")
 		}
 
-		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Type", "application/vnd.api+json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("APP_NAME=Laravel\nAPP_ENV=production\nDB_HOST=127.0.0.1\n"))
+		_, _ = w.Write([]byte(`{
+			"data": {
+				"id": "1",
+				"type": "environments",
+				"attributes": {"content": "APP_NAME=Laravel\nAPP_ENV=production\n"}
+			}
+		}`))
 	}))
 	defer srv.Close()
 
@@ -130,7 +136,7 @@ func TestEnvironmentGet(t *testing.T) {
 		t.Fatalf("Environment.Get: %v", err)
 	}
 
-	expected := "APP_NAME=Laravel\nAPP_ENV=production\nDB_HOST=127.0.0.1\n"
+	expected := "APP_NAME=Laravel\nAPP_ENV=production\n"
 	if env != expected {
 		t.Errorf("Environment.Get = %q, want %q", env, expected)
 	}
