@@ -96,6 +96,7 @@ func (m App) sftpCmd() tea.Cmd {
 	}
 
 	target := fmt.Sprintf("sftp://%s@%s:%d%s", user, m.selectedSrv.IPAddress, port, remotePath)
+
 	c := exec.Command("termscp", target)
 	return tea.ExecProcess(c, func(err error) tea.Msg {
 		return externalExitMsg{err}
