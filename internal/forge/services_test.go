@@ -141,8 +141,8 @@ func TestDatabaseCreate(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s, want POST", r.Method)
 		}
-		if r.URL.Path != "/servers/1/databases" {
-			t.Errorf("path = %s, want /servers/1/databases", r.URL.Path)
+		if r.URL.Path != "/orgs/test-org/servers/1/database/schemas" {
+			t.Errorf("path = %s, want /orgs/test-org/servers/1/database/schemas", r.URL.Path)
 		}
 		if got := r.Header.Get("Content-Type"); got != "application/vnd.api+json" {
 			t.Errorf("Content-Type = %q, want %q", got, "application/vnd.api+json")
@@ -168,15 +168,17 @@ func TestDatabaseCreate(t *testing.T) {
 			t.Errorf("body.password = %v, want %q", req["password"], "secret")
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/vnd.api+json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{
-			"database": {
-				"id": 100,
-				"server_id": 1,
-				"name": "my_db",
-				"status": "installing",
-				"is_synced": false
+			"data": {
+				"id": "100",
+				"type": "database-schemas",
+				"attributes": {
+					"id": 100,
+					"name": "my_db",
+					"status": "installing"
+				}
 			}
 		}`))
 	}))
@@ -198,9 +200,6 @@ func TestDatabaseCreate(t *testing.T) {
 	}
 	if db.Status != "installing" {
 		t.Errorf("db.Status = %q, want %q", db.Status, "installing")
-	}
-	if db.IsSynced {
-		t.Error("db.IsSynced = true, want false")
 	}
 }
 
@@ -226,14 +225,17 @@ func TestDatabaseCreateWithoutOptionals(t *testing.T) {
 			t.Errorf("body.name = %v, want %q", req["name"], "my_db")
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/vnd.api+json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{
-			"database": {
-				"id": 101,
-				"name": "my_db",
-				"status": "installing",
-				"is_synced": false
+			"data": {
+				"id": "101",
+				"type": "database-schemas",
+				"attributes": {
+					"id": 101,
+					"name": "my_db",
+					"status": "installing"
+				}
 			}
 		}`))
 	}))
