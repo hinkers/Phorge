@@ -88,8 +88,8 @@ func TestDeploymentsDeploy(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s, want POST", r.Method)
 		}
-		if r.URL.Path != "/servers/1/sites/10/deployment/deploy" {
-			t.Errorf("path = %s, want /servers/1/sites/10/deployment/deploy", r.URL.Path)
+		if r.URL.Path != "/orgs/test-org/servers/1/sites/10/deployments" {
+			t.Errorf("path = %s, want /orgs/test-org/servers/1/sites/10/deployments", r.URL.Path)
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
 			t.Errorf("Authorization = %q, want %q", got, "Bearer test-token")
