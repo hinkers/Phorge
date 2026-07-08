@@ -152,7 +152,16 @@ var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 // jumpTarget is an optional nickname or site name from CLI args.
 // action is an optional action to run after resolving the target (ssh/sftp/db).
 func NewApp(cfg *config.Config, jumpTarget string, action LaunchAction) App {
-	client := forge.NewClient(cfg.Forge.APIKey, cfg.Forge.Org)
+	org := cfg.Forge.Org
+	if org == "" && cfg.Forge.APIKey != "" {
+		tmpClient := forge.NewClient(cfg.Forge.APIKey, "")
+		if orgs, err := tmpClient.Organizations.List(context.Background()); err == nil && len(orgs) > 0 {
+			org = orgs[0].Slug
+			cfg.Forge.Org = org
+			_ = cfg.Save()
+		}
+	}
+	client := forge.NewClient(cfg.Forge.APIKey, org)
 	project := config.LoadProjectConfig()
 
 	// If a jump target is given, resolve it: check nicknames first, then
