@@ -248,9 +248,6 @@ func TestNewClientDefaults(t *testing.T) {
 	if c.Certificates == nil {
 		t.Fatal("Certificates service is nil")
 	}
-	if c.Workers == nil {
-		t.Fatal("Workers service is nil")
-	}
 	if c.Daemons == nil {
 		t.Fatal("Daemons service is nil")
 	}
@@ -268,9 +265,6 @@ func TestNewClientDefaults(t *testing.T) {
 	}
 	if c.Commands == nil {
 		t.Fatal("Commands service is nil")
-	}
-	if c.Git == nil {
-		t.Fatal("Git service is nil")
 	}
 	if c.Logs == nil {
 		t.Fatal("Logs service is nil")
