@@ -21,7 +21,7 @@ func (s *DeploymentsService) sitePath(serverID, siteID int64, suffix string) str
 
 // List returns deployment history for a site.
 func (s *DeploymentsService) List(ctx context.Context, serverID, siteID int64) ([]Deployment, error) {
-	return listResources[Deployment](s.client, ctx, s.sitePath(serverID, siteID, ""))
+	return listResources[Deployment](s.client, ctx, s.sitePath(serverID, siteID, "?sort=-created_at"))
 }
 
 // Get returns a single deployment by ID.
