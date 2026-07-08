@@ -71,7 +71,7 @@ func (s ServerInfo) View(width, height int, focused bool) string {
 		lines = append(lines, renderInfoKV("DB Type", srv.DatabaseType, innerWidth))
 		lines = append(lines, renderInfoKV("DB Status", srv.DBStatus, innerWidth))
 		lines = append(lines, renderInfoKV("Redis", srv.RedisStatus, innerWidth))
-		lines = append(lines, renderStatusKV("Status", srv.Status, innerWidth))
+		lines = append(lines, renderStatusKV("Status", srv.ConnectionStatus, innerWidth))
 		lines = append(lines, renderInfoKV("SSH Port", fmt.Sprintf("%d", srv.SSHPort), innerWidth))
 	}
 

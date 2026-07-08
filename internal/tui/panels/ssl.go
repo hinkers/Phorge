@@ -293,7 +293,7 @@ func (p SSLPanel) renderCertHeader(maxWidth int) string {
 	domainW := sslDomainWidth(maxWidth)
 	line := fmt.Sprintf("  %-*s  %-*s  %-*s",
 		sslColStatusWidth, "STATUS",
-		domainW, "DOMAIN",
+		domainW, "CERT",
 		sslColTypeWidth, "TYPE",
 	)
 	return theme.Truncate(headerStyle.Render(line), maxWidth)
@@ -314,10 +314,7 @@ func (p SSLPanel) renderCertLine(cert forge.Certificate, idx, maxWidth int) stri
 		statusText = "unknown"
 	}
 
-	domain := cert.Domain
-	if domain == "" {
-		domain = "-"
-	}
+	domain := fmt.Sprintf("Cert #%d", cert.ID)
 	certType := cert.Type
 	if certType == "" {
 		certType = "unknown"

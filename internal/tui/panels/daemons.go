@@ -17,12 +17,12 @@ import (
 
 // DaemonsLoadedMsg is sent when the daemon list has been fetched.
 type DaemonsLoadedMsg struct {
-	Daemons []forge.Daemon
+	Daemons []forge.BackgroundProcess
 }
 
 // DaemonCreatedMsg is sent when a daemon has been created.
 type DaemonCreatedMsg struct {
-	Daemon *forge.Daemon
+	Daemon *forge.BackgroundProcess
 }
 
 // DaemonRestartedMsg is sent when a daemon has been restarted.
@@ -37,7 +37,7 @@ type DaemonsPanel struct {
 	client   *forge.Client
 	serverID int64
 
-	daemons []forge.Daemon
+	daemons []forge.BackgroundProcess
 	cursor  int
 	loading bool
 
@@ -110,7 +110,6 @@ func (p DaemonsPanel) CreateDaemon(command string) tea.Cmd {
 			Command:   command,
 			User:      "forge",
 			Processes: 1,
-			StartSecs: 1,
 		}
 		daemon, err := client.Daemons.Create(context.Background(), serverID, opts)
 		if err != nil {
@@ -155,7 +154,7 @@ func (p DaemonsPanel) DeleteDaemon() tea.Cmd {
 }
 
 // SelectedDaemon returns the currently selected daemon, or nil.
-func (p DaemonsPanel) SelectedDaemon() *forge.Daemon {
+func (p DaemonsPanel) SelectedDaemon() *forge.BackgroundProcess {
 	if len(p.daemons) == 0 || p.cursor >= len(p.daemons) {
 		return nil
 	}
@@ -300,7 +299,7 @@ func (p DaemonsPanel) renderDaemonHeader(maxWidth int) string {
 	return theme.Truncate(headerStyle.Render(line), maxWidth)
 }
 
-func (p DaemonsPanel) renderDaemonLine(d forge.Daemon, idx, maxWidth int) string {
+func (p DaemonsPanel) renderDaemonLine(d forge.BackgroundProcess, idx, maxWidth int) string {
 	icon := statusIcon(d.Status)
 	statusText := d.Status
 	if statusText == "" {

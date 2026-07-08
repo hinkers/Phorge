@@ -63,25 +63,33 @@ func (p GitPanel) View(width, height int, focused bool) string {
 	} else {
 		site := p.site
 
-		provider := site.RepositoryProvider
+		var providerVal, repoVal, branchVal, repoStatusVal string
+		if site.Repository != nil {
+			providerVal = site.Repository.Provider
+			repoVal = site.Repository.URL
+			branchVal = site.Repository.Branch
+			repoStatusVal = site.Repository.Status
+		}
+
+		provider := providerVal
 		if provider == "" {
 			provider = "-"
 		}
 		lines = append(lines, renderInfoKV("Provider", provider, innerWidth))
 
-		repo := site.Repository
+		repo := repoVal
 		if repo == "" {
 			repo = "-"
 		}
 		lines = append(lines, renderInfoKV("Repository", repo, innerWidth))
 
-		branch := site.RepositoryBranch
+		branch := branchVal
 		if branch == "" {
 			branch = "-"
 		}
 		lines = append(lines, renderInfoKV("Branch", branch, innerWidth))
 
-		repoStatus := site.RepositoryStatus
+		repoStatus := repoStatusVal
 		if repoStatus == "" {
 			repoStatus = "-"
 		}
@@ -89,7 +97,7 @@ func (p GitPanel) View(width, height int, focused bool) string {
 
 		// Additional relevant info.
 		lines = append(lines, "")
-		lines = append(lines, renderInfoKV("Quick Deploy", boolToOnOff(site.QuickDeploy), innerWidth))
+		lines = append(lines, renderInfoKV("Quick Deploy", boolPtrToOnOff(site.QuickDeploy), innerWidth))
 		if site.DeploymentURL != "" {
 			lines = append(lines, renderInfoKV("Deploy URL", site.DeploymentURL, innerWidth))
 		}

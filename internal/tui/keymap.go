@@ -112,17 +112,16 @@ func DefaultNavKeyMap() NavKeyMap {
 	}
 }
 
-// SectionKeyMap contains keybindings for switching detail panel tabs (1-9).
+// SectionKeyMap contains keybindings for switching detail panel tabs (1-8).
 type SectionKeyMap struct {
 	Deployments key.Binding // 1
 	Environment key.Binding // 2
 	Databases   key.Binding // 3
 	SSL         key.Binding // 4
-	Workers     key.Binding // 5
-	Daemons     key.Binding // 6
-	Firewall    key.Binding // 7
-	Jobs        key.Binding // 8
-	Domains     key.Binding // 9
+	Daemons     key.Binding // 5
+	Firewall    key.Binding // 6
+	Jobs        key.Binding // 7
+	Domains     key.Binding // 8
 }
 
 // DefaultSectionKeyMap returns the default section keybindings.
@@ -144,25 +143,21 @@ func DefaultSectionKeyMap() SectionKeyMap {
 			key.WithKeys("4"),
 			key.WithHelp("4", "ssl"),
 		),
-		Workers: key.NewBinding(
-			key.WithKeys("5"),
-			key.WithHelp("5", "workers"),
-		),
 		Daemons: key.NewBinding(
-			key.WithKeys("6"),
-			key.WithHelp("6", "daemons"),
+			key.WithKeys("5"),
+			key.WithHelp("5", "daemons"),
 		),
 		Firewall: key.NewBinding(
-			key.WithKeys("7"),
-			key.WithHelp("7", "firewall"),
+			key.WithKeys("6"),
+			key.WithHelp("6", "firewall"),
 		),
 		Jobs: key.NewBinding(
-			key.WithKeys("8"),
-			key.WithHelp("8", "jobs"),
+			key.WithKeys("7"),
+			key.WithHelp("7", "jobs"),
 		),
 		Domains: key.NewBinding(
-			key.WithKeys("9"),
-			key.WithHelp("9", "domains"),
+			key.WithKeys("8"),
+			key.WithHelp("8", "domains"),
 		),
 	}
 }
