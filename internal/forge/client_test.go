@@ -18,32 +18,41 @@ func newTestClient(t *testing.T, srv *httptest.Server) *Client {
 
 func TestListServers(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/servers" {
+		if r.URL.Path != "/orgs/test-org/servers" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
 			t.Errorf("Authorization = %q, want %q", got, "Bearer test-token")
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/vnd.api+json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{
-			"servers": [
+			"data": [
 				{
-					"id": 1,
-					"name": "production",
-					"ip_address": "10.0.0.1",
-					"is_ready": true,
-					"status": "installed"
+					"id": "1",
+					"type": "servers",
+					"attributes": {
+						"id": 1,
+						"name": "production",
+						"ip_address": "10.0.0.1",
+						"is_ready": true,
+						"status": "installed"
+					}
 				},
 				{
-					"id": 2,
-					"name": "staging",
-					"ip_address": "10.0.0.2",
-					"is_ready": false,
-					"status": "installing"
+					"id": "2",
+					"type": "servers",
+					"attributes": {
+						"id": 2,
+						"name": "staging",
+						"ip_address": "10.0.0.2",
+						"is_ready": false,
+						"status": "installing"
+					}
 				}
-			]
+			],
+			"meta": {"per_page": 30, "next_cursor": null, "prev_cursor": null}
 		}`))
 	}))
 	defer srv.Close()
