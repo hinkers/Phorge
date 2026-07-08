@@ -895,10 +895,17 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case dbReadyMsg:
-		m.toast = ""
+		m.toast = "Starting SSH tunnel..."
 		m.toastIsErr = false
 		var cmd tea.Cmd
 		m, cmd = m.handleDBReady(msg)
+		return m, cmd
+
+	case tunnelReadyMsg:
+		m.toast = ""
+		m.toastIsErr = false
+		var cmd tea.Cmd
+		m, cmd = m.handleTunnelReady(msg)
 		return m, cmd
 	}
 
