@@ -17,6 +17,7 @@ import (
 // setupValidateMsg is returned after attempting to validate the API key.
 type setupValidateMsg struct {
 	user *forge.User
+	org  string
 	err  error
 }
 
@@ -101,8 +102,9 @@ func (s Setup) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return s, nil
 		}
 
-		// Success: save the API key to the config.
+		// Success: save the API key (and discovered org, if any) to the config.
 		s.config.Forge.APIKey = strings.TrimSpace(s.input.Value())
+		s.config.Forge.Org = msg.org
 		if err := s.config.Save(); err != nil {
 			s.err = err
 			return s, nil
@@ -259,10 +261,23 @@ func (s Setup) center(box string) string {
 }
 
 // validateKey creates a command that validates the API key by calling the Forge API.
+// On success it also attempts to discover the user's organization slug, since
+// the Forge API requires an org context for most subsequent requests.
 func (s Setup) validateKey(apiKey string) tea.Cmd {
 	return func() tea.Msg {
-		client := forge.NewClient(apiKey)
+		client := forge.NewClient(apiKey, "")
 		user, err := client.Servers.GetUser(context.Background())
-		return setupValidateMsg{user: user, err: err}
+		if err != nil {
+			return setupValidateMsg{user: user, err: err}
+		}
+
+		var orgSlug string
+		orgs, orgErr := client.Organizations.List(context.Background())
+		if orgErr == nil && len(orgs) > 0 {
+			// TODO: add an org picker when a user belongs to multiple orgs.
+			orgSlug = orgs[0].Slug
+		}
+
+		return setupValidateMsg{user: user, org: orgSlug, err: nil}
 	}
 }

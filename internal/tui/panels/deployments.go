@@ -347,9 +347,9 @@ func (p DeploymentsPanel) renderDeploymentLine(dep forge.Deployment, idx, maxWid
 	}
 
 	// Commit message (truncated).
-	msg := dep.CommitMessage
+	msg := dep.Commit.Message
 	if msg == "" {
-		msg = dep.DisplayableType
+		msg = dep.Type
 	}
 	if msg == "" {
 		msg = "No message"
@@ -357,7 +357,7 @@ func (p DeploymentsPanel) renderDeploymentLine(dep forge.Deployment, idx, maxWid
 	msg = strings.ReplaceAll(msg, "\n", " ")
 
 	// Author.
-	author := dep.CommitAuthor
+	author := dep.Commit.Author
 	if author == "" {
 		author = "-"
 	}

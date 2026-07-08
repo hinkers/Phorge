@@ -60,16 +60,22 @@ func (s SiteInfo) View(width, height int, focused bool) string {
 		lines = append(lines, theme.NormalItemStyle.Render("No site selected"))
 	} else {
 		site := s.site
+		repoURL, repoBranch, repoStatus := "", "", ""
+		if site.Repository != nil {
+			repoURL = site.Repository.URL
+			repoBranch = site.Repository.Branch
+			repoStatus = site.Repository.Status
+		}
 		lines = append(lines, renderInfoKV("Name", site.Name, innerWidth))
 		lines = append(lines, renderInfoKV("Directory", site.Directory, innerWidth))
 		lines = append(lines, renderInfoKV("Web Dir", site.WebDirectory, innerWidth))
-		lines = append(lines, renderInfoKV("Repository", site.Repository, innerWidth))
-		lines = append(lines, renderInfoKV("Branch", site.RepositoryBranch, innerWidth))
-		lines = append(lines, renderInfoKV("Repo Status", site.RepositoryStatus, innerWidth))
+		lines = append(lines, renderInfoKV("Repository", repoURL, innerWidth))
+		lines = append(lines, renderInfoKV("Branch", repoBranch, innerWidth))
+		lines = append(lines, renderInfoKV("Repo Status", repoStatus, innerWidth))
 		lines = append(lines, renderInfoKV("PHP", site.PHPVersion, innerWidth))
-		lines = append(lines, renderInfoKV("Type", site.ProjectType, innerWidth))
+		lines = append(lines, renderInfoKV("Type", site.AppType, innerWidth))
 		lines = append(lines, renderStatusKV("Status", site.Status, innerWidth))
-		lines = append(lines, renderInfoKV("Quick Deploy", boolToOnOff(site.QuickDeploy), innerWidth))
+		lines = append(lines, renderInfoKV("Quick Deploy", boolPtrToOnOff(site.QuickDeploy), innerWidth))
 		lines = append(lines, renderInfoKV("SSL", sslStatus(site.IsSecured), innerWidth))
 
 		// Show aliases if any.
@@ -112,6 +118,15 @@ func boolToOnOff(b bool) string {
 		return "on"
 	}
 	return "off"
+}
+
+// boolPtrToOnOff converts a *bool to a human-readable "on"/"off" string,
+// treating a nil pointer as "off".
+func boolPtrToOnOff(b *bool) string {
+	if b == nil {
+		return "off"
+	}
+	return boolToOnOff(*b)
 }
 
 // sslStatus converts a bool to "secured"/"not secured".

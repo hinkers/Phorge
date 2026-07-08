@@ -2,19 +2,26 @@ package forge
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 )
 
-// Get returns the environment file contents for a site as plain text.
+// envContent wraps the "content" attribute of the environment JSON:API resource.
+type envContent struct {
+	Content string `json:"content"`
+}
+
+// Get returns the environment file contents for a site.
 func (s *EnvironmentService) Get(ctx context.Context, serverID, siteID int64) (string, error) {
-	path := fmt.Sprintf("/servers/%d/sites/%d/env", serverID, siteID)
-	return s.client.getText(ctx, path)
+	out, err := getResource[envContent](s.client, ctx, s.client.orgPath("/servers/%d/sites/%d/environment", serverID, siteID))
+	if err != nil {
+		return "", err
+	}
+	return out.Content, nil
 }
 
 // Update replaces the environment file contents for a site.
 func (s *EnvironmentService) Update(ctx context.Context, serverID, siteID int64, content string) error {
+	path := s.client.orgPath("/servers/%d/sites/%d/environment", serverID, siteID)
 	body := map[string]string{"content": content}
-	path := fmt.Sprintf("/servers/%d/sites/%d/env", serverID, siteID)
 	return s.client.do(ctx, http.MethodPut, path, body, nil)
 }

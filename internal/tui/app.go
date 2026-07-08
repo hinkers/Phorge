@@ -63,7 +63,6 @@ type App struct {
 	databasesPanel    panels.DatabasesPanel
 	dbUsersPanel      panels.DBUsersPanel
 	sslPanel          panels.SSLPanel
-	workersPanel      panels.WorkersPanel
 	daemonsPanel      panels.DaemonsPanel
 	firewallPanel     panels.FirewallPanel
 	jobsPanel         panels.JobsPanel
@@ -95,7 +94,7 @@ type App struct {
 	// Data kept at the app level for cross-panel concerns.
 	selectedSrv  *forge.Server
 	selectedSite *forge.Site
-	activeTab    int // 1-9 for detail section tabs
+	activeTab    int // 1-8 for detail section tabs
 
 	// UI state
 	toast      string
@@ -153,7 +152,16 @@ var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 // jumpTarget is an optional nickname or site name from CLI args.
 // action is an optional action to run after resolving the target (ssh/sftp/db).
 func NewApp(cfg *config.Config, jumpTarget string, action LaunchAction) App {
-	client := forge.NewClient(cfg.Forge.APIKey)
+	org := cfg.Forge.Org
+	if org == "" && cfg.Forge.APIKey != "" {
+		tmpClient := forge.NewClient(cfg.Forge.APIKey, "")
+		if orgs, err := tmpClient.Organizations.List(context.Background()); err == nil && len(orgs) > 0 {
+			org = orgs[0].Slug
+			cfg.Forge.Org = org
+			_ = cfg.Save()
+		}
+	}
+	client := forge.NewClient(cfg.Forge.APIKey, org)
 	project := config.LoadProjectConfig()
 
 	// If a jump target is given, resolve it: check nicknames first, then
@@ -618,36 +626,6 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sslPanel.LoadCerts(),
 		)
 
-	// Workers panel messages.
-	case panels.WorkersLoadedMsg:
-		p, cmd := m.workersPanel.Update(msg)
-		m.workersPanel = p.(panels.WorkersPanel)
-		return m, cmd
-
-	case panels.WorkerCreatedMsg:
-		m.toast = "Worker created"
-		m.toastIsErr = false
-		return m, tea.Batch(
-			m.clearToastAfter(3*time.Second),
-			m.workersPanel.LoadWorkers(),
-		)
-
-	case panels.WorkerRestartedMsg:
-		m.toast = "Worker restarted"
-		m.toastIsErr = false
-		return m, tea.Batch(
-			m.clearToastAfter(3*time.Second),
-			m.workersPanel.LoadWorkers(),
-		)
-
-	case panels.WorkerDeletedMsg:
-		m.toast = "Worker deleted"
-		m.toastIsErr = false
-		return m, tea.Batch(
-			m.clearToastAfter(3*time.Second),
-			m.workersPanel.LoadWorkers(),
-		)
-
 	// Daemons panel messages.
 	case panels.DaemonsLoadedMsg:
 		p, cmd := m.daemonsPanel.Update(msg)
@@ -858,7 +836,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.clearToastAfter(3 * time.Second)
 		}
 		m.config = newCfg
-		m.forge = forge.NewClient(newCfg.Forge.APIKey)
+		m.forge = forge.NewClient(newCfg.Forge.APIKey, newCfg.Forge.Org)
 		m.settingsModal = m.settingsModal.Open(m.config)
 		m.toast = "Config reloaded"
 		m.toastIsErr = false
@@ -917,10 +895,17 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case dbReadyMsg:
-		m.toast = ""
+		m.toast = "Starting SSH tunnel..."
 		m.toastIsErr = false
 		var cmd tea.Cmd
 		m, cmd = m.handleDBReady(msg)
+		return m, cmd
+
+	case tunnelReadyMsg:
+		m.toast = ""
+		m.toastIsErr = false
+		var cmd tea.Cmd
+		m, cmd = m.handleTunnelReady(msg)
 		return m, cmd
 	}
 
@@ -1136,7 +1121,7 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	// If the commands panel is showing detail and user presses Esc,
 	// go back to the commands list (not up to tree panel).
-	if m.activeTab == 6 && m.selectedSite != nil && m.commandsPanel.ShowingDetail() {
+	if m.activeTab == 5 && m.selectedSite != nil && m.commandsPanel.ShowingDetail() {
 		if key.Matches(msg, m.navKeys.Back) {
 			p, cmd := m.commandsPanel.Update(msg)
 			m.commandsPanel = p.(panels.CommandsPanel)
@@ -1154,7 +1139,7 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.focus = FocusTree
 		return m, nil
 
-	// Section tab switching (1-9).
+	// Section tab switching (1-8).
 	case key.Matches(msg, m.sectionKeys.Deployments):
 		return m.switchToTab(1)
 	case key.Matches(msg, m.sectionKeys.Environment):
@@ -1163,16 +1148,14 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.switchToTab(3)
 	case key.Matches(msg, m.sectionKeys.SSL):
 		return m.switchToTab(4)
-	case key.Matches(msg, m.sectionKeys.Workers):
-		return m.switchToTab(5)
 	case key.Matches(msg, m.sectionKeys.Daemons):
-		return m.switchToTab(6)
+		return m.switchToTab(5)
 	case key.Matches(msg, m.sectionKeys.Firewall):
-		return m.switchToTab(7)
+		return m.switchToTab(6)
 	case key.Matches(msg, m.sectionKeys.Jobs):
-		return m.switchToTab(8)
+		return m.switchToTab(7)
 	case key.Matches(msg, m.sectionKeys.Domains):
-		return m.switchToTab(9)
+		return m.switchToTab(8)
 	}
 
 	// Tab 1: Deploy (site) or Events (server).
@@ -1200,13 +1183,8 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleSSLKey(msg)
 	}
 
-	// Workers (tab 5) - site-level.
-	if m.activeTab == 5 && m.selectedSite != nil {
-		return m.handleWorkersKey(msg)
-	}
-
-	// Tab 6: Commands (site) or Daemons (server).
-	if m.activeTab == 6 {
+	// Tab 5: Commands (site) or Daemons (server).
+	if m.activeTab == 5 {
 		if m.selectedSite != nil {
 			return m.handleCommandsKey(msg)
 		}
@@ -1215,8 +1193,8 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Tab 7: Logs (site) or Firewall (server).
-	if m.activeTab == 7 {
+	// Tab 6: Logs (site) or Firewall (server).
+	if m.activeTab == 6 {
 		if m.selectedSite != nil {
 			p, cmd := m.logsPanel.Update(msg)
 			m.logsPanel = p.(panels.LogsPanel)
@@ -1227,8 +1205,8 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Tab 8: Git (site, read-only) or Jobs (server, read-only).
-	if m.activeTab == 8 {
+	// Tab 7: Git (site, read-only) or Jobs (server, read-only).
+	if m.activeTab == 7 {
 		if m.selectedSite != nil {
 			// Git panel is read-only, no key handling needed.
 			return m, nil
@@ -1240,8 +1218,8 @@ func (m App) handleDetailKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Tab 9: Domains (site) or SSH Keys (server).
-	if m.activeTab == 9 {
+	// Tab 8: Domains (site) or SSH Keys (server).
+	if m.activeTab == 8 {
 		if m.selectedSite != nil {
 			return m.handleDomainsKey(msg)
 		}
@@ -1300,8 +1278,8 @@ func (m App) switchToTab(tab int) (tea.Model, tea.Cmd) {
 }
 
 // initTabPanel creates and loads the panel for the given tab.
-// Tabs 1-5 are always the same: Deploy, Env, DB, SSL, Workers.
-// Tabs 6-9 are context-sensitive:
+// Tabs 1-4 are always the same: Deploy, Env, DB, SSL.
+// Tabs 5-8 are context-sensitive:
 //   - With a site selected: Commands, Logs, Git, Domains
 //   - Without a site (server-only): Daemons, Firewall, Jobs, SSH Keys
 func (m App) initTabPanel(tab int, serverID, siteID int64) (tea.Model, tea.Cmd) {
@@ -1335,12 +1313,6 @@ func (m App) initTabPanel(tab int, serverID, siteID int64) (tea.Model, tea.Cmd) 
 		m.sslPanel = panels.NewSSLPanel(m.forge, serverID, siteID)
 		return m, m.sslPanel.LoadCerts()
 	case 5:
-		if siteID == 0 {
-			return m, nil
-		}
-		m.workersPanel = panels.NewWorkersPanel(m.forge, serverID, siteID)
-		return m, m.workersPanel.LoadWorkers()
-	case 6:
 		if siteID > 0 {
 			// Site context: Commands.
 			m.commandsPanel = panels.NewCommandsPanel(m.forge, serverID, siteID)
@@ -1349,7 +1321,7 @@ func (m App) initTabPanel(tab int, serverID, siteID int64) (tea.Model, tea.Cmd) 
 		// Server context: Daemons.
 		m.daemonsPanel = panels.NewDaemonsPanel(m.forge, serverID)
 		return m, m.daemonsPanel.LoadDaemons()
-	case 7:
+	case 6:
 		if siteID > 0 {
 			// Site context: Logs (site-level).
 			m.logsPanel = panels.NewLogsPanel(m.forge, serverID, siteID, m.config.Editor.Command)
@@ -1358,7 +1330,7 @@ func (m App) initTabPanel(tab int, serverID, siteID int64) (tea.Model, tea.Cmd) 
 		// Server context: Firewall.
 		m.firewallPanel = panels.NewFirewallPanel(m.forge, serverID)
 		return m, m.firewallPanel.LoadRules()
-	case 8:
+	case 7:
 		if siteID > 0 {
 			// Site context: Git info (read-only).
 			m.gitPanel = panels.NewGitPanel(m.selectedSite)
@@ -1367,7 +1339,7 @@ func (m App) initTabPanel(tab int, serverID, siteID int64) (tea.Model, tea.Cmd) 
 		// Server context: Scheduled jobs.
 		m.jobsPanel = panels.NewJobsPanel(m.forge, serverID)
 		return m, m.jobsPanel.LoadJobs()
-	case 9:
+	case 8:
 		if siteID > 0 {
 			// Site context: Domains.
 			aliases := []string{}
@@ -1491,14 +1463,14 @@ func (m App) handleSSLKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, key.NewBinding(key.WithKeys("a"))):
 		if cert := m.sslPanel.SelectedCert(); cert != nil {
-			c := components.NewConfirm("activate-cert", fmt.Sprintf("Activate certificate for %q?", cert.Domain))
+			c := components.NewConfirm("activate-cert", fmt.Sprintf("Activate certificate #%d?", cert.ID))
 			m.confirm = &c
 		}
 		return m, nil
 
 	case key.Matches(msg, key.NewBinding(key.WithKeys("x"))):
 		if cert := m.sslPanel.SelectedCert(); cert != nil {
-			c := components.NewConfirm("delete-cert", fmt.Sprintf("Delete certificate for %q?", cert.Domain))
+			c := components.NewConfirm("delete-cert", fmt.Sprintf("Delete certificate #%d?", cert.ID))
 			m.confirm = &c
 		}
 		return m, nil
@@ -1506,34 +1478,6 @@ func (m App) handleSSLKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	p, cmd := m.sslPanel.Update(msg)
 	m.sslPanel = p.(panels.SSLPanel)
-	return m, cmd
-}
-
-// handleWorkersKey handles keys specific to the workers panel tab.
-func (m App) handleWorkersKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, key.NewBinding(key.WithKeys("c"))):
-		c := components.NewConfirm("create-worker", "Create worker with defaults (redis/default/1 proc)?")
-		m.confirm = &c
-		return m, nil
-
-	case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
-		if w := m.workersPanel.SelectedWorker(); w != nil {
-			c := components.NewConfirm("restart-worker", fmt.Sprintf("Restart worker %s:%s?", w.Connection, w.Queue))
-			m.confirm = &c
-		}
-		return m, nil
-
-	case key.Matches(msg, key.NewBinding(key.WithKeys("x"))):
-		if w := m.workersPanel.SelectedWorker(); w != nil {
-			c := components.NewConfirm("delete-worker", fmt.Sprintf("Delete worker %s:%s?", w.Connection, w.Queue))
-			m.confirm = &c
-		}
-		return m, nil
-	}
-
-	p, cmd := m.workersPanel.Update(msg)
-	m.workersPanel = p.(panels.WorkersPanel)
 	return m, cmd
 }
 
@@ -1789,7 +1733,7 @@ func (m App) handleInputResult(msg components.InputResult) (tea.Model, tea.Cmd) 
 		}
 		// If API key changed, recreate the client.
 		if msg.ID == "settings-api-key" {
-			m.forge = forge.NewClient(m.config.Forge.APIKey)
+			m.forge = forge.NewClient(m.config.Forge.APIKey, m.config.Forge.Org)
 		}
 		m.toast = "Settings saved"
 		m.toastIsErr = false
@@ -1824,12 +1768,6 @@ func (m App) handleConfirmResult(msg components.ConfirmResult) (tea.Model, tea.C
 		return m, m.sslPanel.ActivateCert()
 	case "delete-cert":
 		return m, m.sslPanel.DeleteCert()
-	case "create-worker":
-		return m, m.workersPanel.CreateWorker()
-	case "restart-worker":
-		return m, m.workersPanel.RestartWorker()
-	case "delete-worker":
-		return m, m.workersPanel.DeleteWorker()
 	case "restart-daemon":
 		return m, m.daemonsPanel.RestartDaemon()
 	case "delete-daemon":
@@ -2008,14 +1946,12 @@ func (m App) renderDetailPanel(width, height int) string {
 		case 4:
 			sectionPanel = m.sslPanel.View(width, sectionHeight, focused)
 		case 5:
-			sectionPanel = m.workersPanel.View(width, sectionHeight, focused)
-		case 6:
 			sectionPanel = m.commandsPanel.View(width, sectionHeight, focused)
-		case 7:
+		case 6:
 			sectionPanel = m.logsPanel.View(width, sectionHeight, focused)
-		case 8:
+		case 7:
 			sectionPanel = m.gitPanel.View(width, sectionHeight, focused)
-		case 9:
+		case 8:
 			sectionPanel = m.domainsPanel.View(width, sectionHeight, focused)
 		default:
 			sectionPanel = m.siteInfo.View(width, sectionHeight, focused)
@@ -2044,13 +1980,13 @@ func (m App) renderDetailPanel(width, height int) string {
 			} else {
 				sectionPanel = m.databasesPanel.View(width, sectionHeight, focused)
 			}
-		case 6:
+		case 5:
 			sectionPanel = m.daemonsPanel.View(width, sectionHeight, focused)
-		case 7:
+		case 6:
 			sectionPanel = m.firewallPanel.View(width, sectionHeight, focused)
-		case 8:
+		case 7:
 			sectionPanel = m.jobsPanel.View(width, sectionHeight, focused)
-		case 9:
+		case 8:
 			sectionPanel = m.sshKeysPanel.View(width, sectionHeight, focused)
 		default:
 			sectionPanel = m.serverInfo.View(width, sectionHeight, focused)
@@ -2064,14 +2000,14 @@ func (m App) renderDetailPanel(width, height int) string {
 
 // renderTabBar renders the numbered section tabs at the top of the detail panel.
 func (m App) renderTabBar(width int) string {
-	// Tabs 6-9 change based on context (site selected vs server only).
+	// Tabs 5-8 change based on context (site selected vs server only).
 	tabs := []struct {
 		num  int
 		name string
 	}{
 		{1, "Deploy"}, {2, "Env"}, {3, "DB"},
-		{4, "SSL"}, {5, "Workers"}, {6, "Cmds"},
-		{7, "Logs"}, {8, "Git"}, {9, "Domains"},
+		{4, "SSL"}, {5, "Cmds"},
+		{6, "Logs"}, {7, "Git"}, {8, "Domains"},
 	}
 
 	var parts []string
@@ -2089,7 +2025,7 @@ func (m App) renderTabBar(width int) string {
 }
 
 // serverTabNums lists which activeTab values correspond to server-level panels.
-var serverTabNums = map[int]bool{1: true, 3: true, 6: true, 7: true, 8: true, 9: true}
+var serverTabNums = map[int]bool{1: true, 3: true, 5: true, 6: true, 7: true, 8: true}
 
 // renderServerTabBar renders the server-level tab bar.
 func (m App) renderServerTabBar(width int) string {
@@ -2097,7 +2033,7 @@ func (m App) renderServerTabBar(width int) string {
 		num  int
 		name string
 	}{
-		{0, "Info"}, {1, "Events"}, {3, "DB"}, {6, "Daemons"}, {7, "Firewall"}, {8, "Jobs"}, {9, "SSH Keys"},
+		{0, "Info"}, {1, "Events"}, {3, "DB"}, {5, "Daemons"}, {6, "Firewall"}, {7, "Jobs"}, {8, "SSH Keys"},
 	}
 
 	// If the active tab isn't a server-level tab, highlight Info.
@@ -2149,23 +2085,21 @@ func (m App) renderFooter() string {
 			helpBindings = m.databasesPanel.HelpBindings()
 		} else if m.selectedSite != nil && m.activeTab == 4 {
 			helpBindings = m.sslPanel.HelpBindings()
-		} else if m.selectedSite != nil && m.activeTab == 5 {
-			helpBindings = m.workersPanel.HelpBindings()
-		} else if m.activeTab == 6 && m.selectedSite != nil {
+		} else if m.activeTab == 5 && m.selectedSite != nil {
 			helpBindings = m.commandsPanel.HelpBindings()
-		} else if m.activeTab == 6 {
+		} else if m.activeTab == 5 {
 			helpBindings = m.daemonsPanel.HelpBindings()
-		} else if m.activeTab == 7 && m.selectedSite != nil {
+		} else if m.activeTab == 6 && m.selectedSite != nil {
 			helpBindings = m.logsPanel.HelpBindings()
-		} else if m.activeTab == 7 {
+		} else if m.activeTab == 6 {
 			helpBindings = m.firewallPanel.HelpBindings()
-		} else if m.activeTab == 8 && m.selectedSite != nil {
+		} else if m.activeTab == 7 && m.selectedSite != nil {
 			helpBindings = m.gitPanel.HelpBindings()
-		} else if m.activeTab == 8 {
+		} else if m.activeTab == 7 {
 			helpBindings = m.jobsPanel.HelpBindings()
-		} else if m.activeTab == 9 && m.selectedSite != nil {
+		} else if m.activeTab == 8 && m.selectedSite != nil {
 			helpBindings = m.domainsPanel.HelpBindings()
-		} else if m.activeTab == 9 {
+		} else if m.activeTab == 8 {
 			helpBindings = m.sshKeysPanel.HelpBindings()
 		} else if m.selectedSite != nil {
 			helpBindings = m.siteInfo.HelpBindings()

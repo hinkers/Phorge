@@ -14,31 +14,37 @@ func TestSitesList(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Errorf("method = %s, want GET", r.Method)
 		}
-		if r.URL.Path != "/servers/1/sites" {
-			t.Errorf("path = %s, want /servers/1/sites", r.URL.Path)
+		if r.URL.Path != "/orgs/test-org/servers/1/sites" {
+			t.Errorf("path = %s, want /orgs/test-org/servers/1/sites", r.URL.Path)
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/vnd.api+json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{
-			"sites": [
+			"data": [
 				{
-					"id": 10,
-					"server_id": 1,
-					"name": "example.com",
-					"status": "installed",
-					"repository": "user/repo",
-					"repository_branch": "main",
-					"quick_deploy": true
+					"id": "10",
+					"type": "sites",
+					"attributes": {
+						"id": 10,
+						"name": "example.com",
+						"status": "installed",
+						"repository": {"provider": "github", "url": "user/repo", "branch": "main"},
+						"quick_deploy": true
+					}
 				},
 				{
-					"id": 11,
-					"server_id": 1,
-					"name": "staging.example.com",
-					"status": "installed",
-					"quick_deploy": false
+					"id": "11",
+					"type": "sites",
+					"attributes": {
+						"id": 11,
+						"name": "staging.example.com",
+						"status": "installed",
+						"quick_deploy": false
+					}
 				}
-			]
+			],
+			"meta": {"per_page": 30, "next_cursor": null, "prev_cursor": null}
 		}`))
 	}))
 	defer srv.Close()
@@ -59,10 +65,10 @@ func TestSitesList(t *testing.T) {
 	if sites[0].Name != "example.com" {
 		t.Errorf("sites[0].Name = %q, want %q", sites[0].Name, "example.com")
 	}
-	if sites[0].Repository != "user/repo" {
-		t.Errorf("sites[0].Repository = %q, want %q", sites[0].Repository, "user/repo")
+	if sites[0].Repository == nil || sites[0].Repository.URL != "user/repo" {
+		t.Errorf("sites[0].Repository = %+v, want URL %q", sites[0].Repository, "user/repo")
 	}
-	if !sites[0].QuickDeploy {
+	if sites[0].QuickDeploy == nil || !*sites[0].QuickDeploy {
 		t.Error("sites[0].QuickDeploy = false, want true")
 	}
 
@@ -72,7 +78,7 @@ func TestSitesList(t *testing.T) {
 	if sites[1].Name != "staging.example.com" {
 		t.Errorf("sites[1].Name = %q, want %q", sites[1].Name, "staging.example.com")
 	}
-	if sites[1].QuickDeploy {
+	if sites[1].QuickDeploy == nil || *sites[1].QuickDeploy {
 		t.Error("sites[1].QuickDeploy = true, want false")
 	}
 }
@@ -82,8 +88,8 @@ func TestDeploymentsDeploy(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s, want POST", r.Method)
 		}
-		if r.URL.Path != "/servers/1/sites/10/deployment/deploy" {
-			t.Errorf("path = %s, want /servers/1/sites/10/deployment/deploy", r.URL.Path)
+		if r.URL.Path != "/orgs/test-org/servers/1/sites/10/deployments" {
+			t.Errorf("path = %s, want /orgs/test-org/servers/1/sites/10/deployments", r.URL.Path)
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
 			t.Errorf("Authorization = %q, want %q", got, "Bearer test-token")
@@ -105,16 +111,22 @@ func TestEnvironmentGet(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Errorf("method = %s, want GET", r.Method)
 		}
-		if r.URL.Path != "/servers/1/sites/10/env" {
-			t.Errorf("path = %s, want /servers/1/sites/10/env", r.URL.Path)
+		if r.URL.Path != "/orgs/test-org/servers/1/sites/10/environment" {
+			t.Errorf("path = %s, want /orgs/test-org/servers/1/sites/10/environment", r.URL.Path)
 		}
-		if got := r.Header.Get("Accept"); got != "text/plain" {
-			t.Errorf("Accept = %q, want %q", got, "text/plain")
+		if got := r.Header.Get("Accept"); got != "application/vnd.api+json" {
+			t.Errorf("Accept = %q, want %q", got, "application/vnd.api+json")
 		}
 
-		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Type", "application/vnd.api+json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("APP_NAME=Laravel\nAPP_ENV=production\nDB_HOST=127.0.0.1\n"))
+		_, _ = w.Write([]byte(`{
+			"data": {
+				"id": "1",
+				"type": "environments",
+				"attributes": {"content": "APP_NAME=Laravel\nAPP_ENV=production\n"}
+			}
+		}`))
 	}))
 	defer srv.Close()
 
@@ -124,7 +136,7 @@ func TestEnvironmentGet(t *testing.T) {
 		t.Fatalf("Environment.Get: %v", err)
 	}
 
-	expected := "APP_NAME=Laravel\nAPP_ENV=production\nDB_HOST=127.0.0.1\n"
+	expected := "APP_NAME=Laravel\nAPP_ENV=production\n"
 	if env != expected {
 		t.Errorf("Environment.Get = %q, want %q", env, expected)
 	}
@@ -135,11 +147,11 @@ func TestDatabaseCreate(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s, want POST", r.Method)
 		}
-		if r.URL.Path != "/servers/1/databases" {
-			t.Errorf("path = %s, want /servers/1/databases", r.URL.Path)
+		if r.URL.Path != "/orgs/test-org/servers/1/database/schemas" {
+			t.Errorf("path = %s, want /orgs/test-org/servers/1/database/schemas", r.URL.Path)
 		}
-		if got := r.Header.Get("Content-Type"); got != "application/json" {
-			t.Errorf("Content-Type = %q, want %q", got, "application/json")
+		if got := r.Header.Get("Content-Type"); got != "application/vnd.api+json" {
+			t.Errorf("Content-Type = %q, want %q", got, "application/vnd.api+json")
 		}
 
 		// Verify request body
@@ -162,15 +174,17 @@ func TestDatabaseCreate(t *testing.T) {
 			t.Errorf("body.password = %v, want %q", req["password"], "secret")
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/vnd.api+json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{
-			"database": {
-				"id": 100,
-				"server_id": 1,
-				"name": "my_db",
-				"status": "installing",
-				"is_synced": false
+			"data": {
+				"id": "100",
+				"type": "database-schemas",
+				"attributes": {
+					"id": 100,
+					"name": "my_db",
+					"status": "installing"
+				}
 			}
 		}`))
 	}))
@@ -192,9 +206,6 @@ func TestDatabaseCreate(t *testing.T) {
 	}
 	if db.Status != "installing" {
 		t.Errorf("db.Status = %q, want %q", db.Status, "installing")
-	}
-	if db.IsSynced {
-		t.Error("db.IsSynced = true, want false")
 	}
 }
 
@@ -220,14 +231,17 @@ func TestDatabaseCreateWithoutOptionals(t *testing.T) {
 			t.Errorf("body.name = %v, want %q", req["name"], "my_db")
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/vnd.api+json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{
-			"database": {
-				"id": 101,
-				"name": "my_db",
-				"status": "installing",
-				"is_synced": false
+			"data": {
+				"id": "101",
+				"type": "database-schemas",
+				"attributes": {
+					"id": 101,
+					"name": "my_db",
+					"status": "installing"
+				}
 			}
 		}`))
 	}))

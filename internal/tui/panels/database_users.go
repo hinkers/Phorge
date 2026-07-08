@@ -249,11 +249,10 @@ func (p DBUsersPanel) renderUserLine(user forge.DatabaseUser, idx, maxWidth int)
 	icon := statusIcon(user.Status)
 
 	name := user.Name
-	dbCount := fmt.Sprintf(" %d dbs", len(user.Databases))
 	statusStr := fmt.Sprintf(" [%s]", user.Status)
 
-	// Leave room for: cursor(2) + icon(2) + dbCount(~8) + status(~14) + spacing(6)
-	overhead := 32
+	// Leave room for: cursor(2) + icon(2) + status(~14) + spacing(4)
+	overhead := 22
 	nameWidth := maxWidth - overhead
 	if nameWidth < 10 {
 		nameWidth = 10
@@ -264,7 +263,6 @@ func (p DBUsersPanel) renderUserLine(user forge.DatabaseUser, idx, maxWidth int)
 		line := theme.CursorStyle.Render("> ") +
 			icon + " " +
 			theme.SelectedItemStyle.Render(name) +
-			"  " + theme.NormalItemStyle.Render(dbCount) +
 			"  " + theme.NormalItemStyle.Render(statusStr)
 		return theme.Truncate(line, maxWidth)
 	}
@@ -272,7 +270,6 @@ func (p DBUsersPanel) renderUserLine(user forge.DatabaseUser, idx, maxWidth int)
 	line := "  " +
 		icon + " " +
 		theme.NormalItemStyle.Render(name) +
-		"  " + theme.NormalItemStyle.Render(dbCount) +
 		"  " + theme.NormalItemStyle.Render(statusStr)
 	return theme.Truncate(line, maxWidth)
 }

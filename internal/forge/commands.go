@@ -3,42 +3,25 @@ package forge
 import (
 	"context"
 	"fmt"
-	"net/http"
 )
 
-// List returns all commands that have been executed on a site.
-func (s *CommandsService) List(ctx context.Context, serverID, siteID int64) ([]SiteCommand, error) {
-	var resp struct {
-		Commands []SiteCommand `json:"commands"`
-	}
-	path := fmt.Sprintf("/servers/%d/sites/%d/commands", serverID, siteID)
-	err := s.client.do(ctx, http.MethodGet, path, nil, &resp)
-	return resp.Commands, err
+// sitePath builds the org-scoped commands collection path for a site.
+func (s *CommandsService) sitePath(serverID, siteID int64) string {
+	return s.client.orgPath("/servers/%d/sites/%d/commands", serverID, siteID)
 }
 
-// Get returns a single site command by ID.
-func (s *CommandsService) Get(ctx context.Context, serverID, siteID, cmdID int64) (*SiteCommand, error) {
-	var resp struct {
-		Command SiteCommand `json:"command"`
-	}
-	path := fmt.Sprintf("/servers/%d/sites/%d/commands/%d", serverID, siteID, cmdID)
-	err := s.client.do(ctx, http.MethodGet, path, nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-	return &resp.Command, nil
+// List returns all commands that have been executed on a site.
+func (s *CommandsService) List(ctx context.Context, serverID, siteID int64) ([]Command, error) {
+	return listResources[Command](s.client, ctx, s.sitePath(serverID, siteID))
+}
+
+// Get returns a single command by ID.
+func (s *CommandsService) Get(ctx context.Context, serverID, siteID, cmdID int64) (*Command, error) {
+	return getResource[Command](s.client, ctx, fmt.Sprintf("%s/%d", s.sitePath(serverID, siteID), cmdID))
 }
 
 // Create executes a new command on a site.
-func (s *CommandsService) Create(ctx context.Context, serverID, siteID int64, command string) (*SiteCommand, error) {
+func (s *CommandsService) Create(ctx context.Context, serverID, siteID int64, command string) (*Command, error) {
 	body := map[string]string{"command": command}
-	var resp struct {
-		Command SiteCommand `json:"command"`
-	}
-	path := fmt.Sprintf("/servers/%d/sites/%d/commands", serverID, siteID)
-	err := s.client.do(ctx, http.MethodPost, path, body, &resp)
-	if err != nil {
-		return nil, err
-	}
-	return &resp.Command, nil
+	return createResource[Command](s.client, ctx, s.sitePath(serverID, siteID), body)
 }

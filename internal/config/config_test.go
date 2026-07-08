@@ -228,6 +228,34 @@ func TestDefaultSSHKeyEmptyByDefault(t *testing.T) {
 	}
 }
 
+func TestOrgRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	cfg := Default()
+	cfg.Forge.Org = "my-org"
+
+	if err := cfg.SaveTo(path); err != nil {
+		t.Fatalf("SaveTo: %v", err)
+	}
+
+	loaded, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+
+	if loaded.Forge.Org != "my-org" {
+		t.Errorf("Org = %q, want %q", loaded.Forge.Org, "my-org")
+	}
+}
+
+func TestOrgEmptyByDefault(t *testing.T) {
+	cfg := Default()
+	if cfg.Forge.Org != "" {
+		t.Errorf("Default Org = %q, want empty", cfg.Forge.Org)
+	}
+}
+
 func TestLoadFromInvalidTOML(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.toml")

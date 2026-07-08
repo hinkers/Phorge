@@ -17,17 +17,17 @@ import (
 
 // CommandsLoadedMsg is sent when the commands list has been fetched.
 type CommandsLoadedMsg struct {
-	Commands []forge.SiteCommand
+	Commands []forge.Command
 }
 
 // CommandCreatedMsg is sent when a command has been executed.
 type CommandCreatedMsg struct {
-	Command *forge.SiteCommand
+	Command *forge.Command
 }
 
 // CommandDetailMsg is sent when a single command's details have been fetched.
 type CommandDetailMsg struct {
-	Command *forge.SiteCommand
+	Command *forge.Command
 }
 
 // CommandsPanel shows the list of executed commands on a site.
@@ -36,13 +36,13 @@ type CommandsPanel struct {
 	serverID int64
 	siteID   int64
 
-	commands []forge.SiteCommand
+	commands []forge.Command
 	cursor   int
 	loading  bool
 
 	// Detail sub-view state.
 	showDetail    bool
-	detailCommand *forge.SiteCommand
+	detailCommand *forge.Command
 
 	// Keybindings
 	up     key.Binding
@@ -245,10 +245,10 @@ func (p CommandsPanel) renderDetail(width, height int) string {
 
 	lines = append(lines, renderInfoKV("Command", cmd.Command, width))
 	lines = append(lines, renderInfoKV("Status", cmd.Status, width))
-	lines = append(lines, renderInfoKV("User", cmd.UserName, width))
+	lines = append(lines, renderInfoKV("User", fmt.Sprintf("%d", cmd.UserID), width))
 	lines = append(lines, renderInfoKV("Created", cmd.CreatedAt, width))
-	if cmd.Duration != nil {
-		lines = append(lines, renderInfoKV("Duration", fmt.Sprintf("%v", cmd.Duration), width))
+	if cmd.Duration != "" {
+		lines = append(lines, renderInfoKV("Duration", cmd.Duration, width))
 	}
 
 	lines = append(lines, "")
@@ -321,7 +321,7 @@ func (p CommandsPanel) renderCommandHeader(maxWidth int) string {
 	return theme.Truncate(headerStyle.Render(line), maxWidth)
 }
 
-func (p CommandsPanel) renderCommandLine(cmd forge.SiteCommand, idx, maxWidth int) string {
+func (p CommandsPanel) renderCommandLine(cmd forge.Command, idx, maxWidth int) string {
 	icon := statusIcon(cmd.Status)
 	statusText := cmd.Status
 	if statusText == "" {
@@ -333,8 +333,8 @@ func (p CommandsPanel) renderCommandLine(cmd forge.SiteCommand, idx, maxWidth in
 		command = "-"
 	}
 
-	user := cmd.UserName
-	if user == "" {
+	user := fmt.Sprintf("%d", cmd.UserID)
+	if cmd.UserID == 0 {
 		user = "-"
 	}
 

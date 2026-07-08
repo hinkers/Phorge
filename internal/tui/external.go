@@ -96,6 +96,7 @@ func (m App) sftpCmd() tea.Cmd {
 	}
 
 	target := fmt.Sprintf("sftp://%s@%s:%d%s", user, m.selectedSrv.IPAddress, port, remotePath)
+
 	c := exec.Command("termscp", target)
 	return tea.ExecProcess(c, func(err error) tea.Msg {
 		return externalExitMsg{err}
@@ -159,10 +160,15 @@ func (m App) databaseCmd() tea.Cmd {
 	}
 }
 
-// handleDBReady sets up the SSH tunnel and launches sqlit for the database
-// connection described in msg. It returns the updated model and tea.Cmd.
+// tunnelReadyMsg is sent after the SSH tunnel is established and ready for sqlit.
+type tunnelReadyMsg struct {
+	sqlitArgs  []string
+	tunnelProc *os.Process
+	err        error
+}
+
+// handleDBReady kicks off the SSH tunnel in a non-blocking Cmd.
 func (m App) handleDBReady(msg dbReadyMsg) (App, tea.Cmd) {
-	// Find a free local port for the SSH tunnel.
 	localPort, err := findFreePort()
 	if err != nil {
 		m.toast = fmt.Sprintf("Failed to find free port: %v", err)
@@ -170,18 +176,16 @@ func (m App) handleDBReady(msg dbReadyMsg) (App, tea.Cmd) {
 		return m, m.clearToastAfter(5 * time.Second)
 	}
 
-	// Determine the remote DB port (default based on connection type).
 	dbPort := msg.port
 	if dbPort == "" {
 		switch msg.connection {
 		case "pgsql":
 			dbPort = "5432"
 		default:
-			dbPort = "3306" // mysql is the default
+			dbPort = "3306"
 		}
 	}
 
-	// Build the SSH tunnel command.
 	sshPort := msg.sshPort
 	if sshPort == 0 {
 		sshPort = 22
@@ -190,7 +194,7 @@ func (m App) handleDBReady(msg dbReadyMsg) (App, tea.Cmd) {
 	tunnelSpec := fmt.Sprintf("%d:%s:%s", localPort, msg.host, dbPort)
 	tunnelArgs := []string{
 		"-L", tunnelSpec,
-		"-N", // no remote command
+		"-N",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "ExitOnForwardFailure=yes",
 	}
@@ -202,32 +206,37 @@ func (m App) handleDBReady(msg dbReadyMsg) (App, tea.Cmd) {
 	}
 	tunnelArgs = append(tunnelArgs, fmt.Sprintf("%s@%s", msg.sshUser, msg.sshHost))
 
-	tunnel := exec.Command("ssh", tunnelArgs...)
-	tunnel.Stdout = nil
-	tunnel.Stderr = nil
+	sqlitArgs := buildSqlitArgs(msg, localPort)
 
-	if err := tunnel.Start(); err != nil {
-		m.toast = fmt.Sprintf("Failed to start SSH tunnel: %v", err)
+	return m, func() tea.Msg {
+		tunnel := exec.Command("ssh", tunnelArgs...)
+		tunnel.Stdout = nil
+		tunnel.Stderr = nil
+
+		if err := tunnel.Start(); err != nil {
+			return tunnelReadyMsg{err: err}
+		}
+
+		time.Sleep(time.Second)
+		return tunnelReadyMsg{sqlitArgs: sqlitArgs, tunnelProc: tunnel.Process}
+	}
+}
+
+// handleTunnelReady launches sqlit now that the tunnel is established.
+func (m App) handleTunnelReady(msg tunnelReadyMsg) (App, tea.Cmd) {
+	if msg.err != nil {
+		m.toast = fmt.Sprintf("Failed to start SSH tunnel: %v", msg.err)
 		m.toastIsErr = true
 		return m, m.clearToastAfter(5 * time.Second)
 	}
 
-	// Store the tunnel process for cleanup.
-	m.tunnelProc = tunnel.Process
+	m.tunnelProc = msg.tunnelProc
+	tunnelProc := msg.tunnelProc
 
-	// Wait briefly for the tunnel to establish.
-	time.Sleep(time.Second)
-
-	// Build the sqlit connection string.
-	sqlitArgs := buildSqlitArgs(msg, localPort)
-	sqlitCmd := exec.Command("sqlit", sqlitArgs...)
+	sqlitCmd := exec.Command("sqlit", msg.sqlitArgs...)
 	sqlitCmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
-	// Store reference for cleanup in the callback.
-	tunnelProc := tunnel.Process
-
 	return m, tea.ExecProcess(sqlitCmd, func(err error) tea.Msg {
-		// Always kill the tunnel when sqlit exits.
 		if tunnelProc != nil {
 			_ = tunnelProc.Kill()
 		}
